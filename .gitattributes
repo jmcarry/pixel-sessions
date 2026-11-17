@@ -1,0 +1,2 @@
+# Preserve the upstream artwork bytes, including its original whitespace.
+mods/clawd-icons/*.svg -whitespace

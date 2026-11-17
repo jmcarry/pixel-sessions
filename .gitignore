@@ -1,0 +1,10 @@
+.DS_Store
+**/__pycache__/
+**/*.pyc
+**/*.d.ts
+**/jsconfig.json
+.venv/
+data/
+backups/
+*.error
+*.log

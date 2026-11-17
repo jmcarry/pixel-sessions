@@ -1,0 +1,8 @@
+{
+  "place": "none",
+  "title": "Tabs with History and Clawd",
+  "cloned_from": {
+    "name": "tabs",
+    "version": "0.1.16"
+  }
+}

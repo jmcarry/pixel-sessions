@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" viewBox="-1 -1 17 17">
+  <g>
+    </g>
+
+  <g>
+    <g fill="#D97757">
+      <rect x="3" y="13" width="1" height="2" />
+      <rect x="5" y="13" width="1" height="2" />
+      <rect x="9" y="13" width="1" height="2" />
+      <rect x="11" y="13" width="1" height="2" />
+    </g>
+
+    <g fill="#D97757">
+      <rect x="2" y="6" width="11" height="7" />
+      <g><rect x="0" y="9" width="2" height="2" /></g>
+      <g>
+        <rect x="13" y="9" width="2" height="2" />
+        <rect x="13.5" y="4" width="1" height="6" fill="#8D6E63" /> 
+        <rect x="13.5" y="4" width="1" height="1" fill="#FFD700" /> 
+      </g>
+    </g>
+    
+    <g fill="#000000" transform-origin="7.5px 9px">
+      <rect x="4" y="8" width="1" height="2" />
+      <rect x="10" y="8" width="1" height="2" />
+    </g>
+
+    
+    <g transform="translate(7.5, 6)">
+      <polygon points="-4,0 4,0 0,-6" fill="#673AB7" />
+      <rect x="-5" y="0" width="10" height="1" fill="#512DA8" />
+      
+      <polygon points="0,-3 0.5,-2.5 1.5,-2.5 0.75,-1.75 1,-0.5 0,-1.25 -1,-0.5 -0.75,-1.75 -1.5,-2.5 -0.5,-2.5" fill="#FFC107" />
+    </g>
+  </g>
+</svg>

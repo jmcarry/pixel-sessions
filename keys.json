@@ -1,0 +1,5 @@
+{
+  "layout:pixel-sessions": {
+    "cmd-p": "mod.open:pixel-picker"
+  }
+}
