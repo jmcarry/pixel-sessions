@@ -39,7 +39,7 @@ For a manual installation:
 
 1. Clone this repository. Inspect `RECIPE.md` and the files before installing trusted mod code.
 2. Copy `layouts/pixel-sessions.json`, each folder under `mods/`, and `pixel-icons/` into the matching locations under `~/.config/herdr-app/`. **Stop if any destination already exists:** reuse only an identical dependency, or rename the incoming dependency and all of its references. Do not replace a shipped or personal mod.
-3. Merge the layout-specific section from `keys.json` into your own key file. It maps ⌘P to the pixel picker only in this layout; the global binding stays unchanged. Merge the two icon fields from `programs.json` if you want the supplied pixel program icons, preserving any existing program settings.
+3. Merge the layout-specific section from `keys.json` into your own key file. It maps ⌘P to the pixel picker and ⌘⌥W to closing the focused pane only in this layout; global bindings stay unchanged. Merge the two icon fields from `programs.json` if you want the supplied pixel program icons, preserving any existing program settings.
 4. Check all ten copied mods with `herdr-app check ~/.config/herdr-app/mods/<name>`, then switch layouts:
 
    ```sh
@@ -52,7 +52,7 @@ Keep your other layouts. ⌘⇧L cycles through them. If you renamed this layout
 
 Open **Files**, then click a Markdown or image file. Files stays visible; the preview opens as a normal split pane in the current tab. Click Files again before using its keyboard controls.
 
-To close just Preview, click it and press **⌘⇧W**, or hover its pane header and click **×**. **⌘W closes the entire tab.** Markdown and SVG also have a Source view. Relative Markdown links open in Preview; external links open only when clicked.
+To close just Preview, click it and press **⌘⌥W** (Herdr 0.1.16 consumes ⌘⇧W before pane bindings), or hover its pane header and click **×**. **⌘W closes the entire tab.** Markdown and SVG also have a Source view. Relative Markdown links open in Preview; external links open only when clicked.
 
 Closing a preview cancels its file watch and discards its script references and pending selection. Herdr controls decoded image and GPU cache retirement; process memory need not fall immediately after closing a pane.
 

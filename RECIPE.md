@@ -22,7 +22,7 @@ A native Herdr desktop workspace with colourful pixel space avatars, distinct Cl
 
 Click Files to give it keyboard focus. ↑/↓ selects visible rows, highlights them, and scrolls them into view. Supported previews follow after a short 90 ms selection delay, discarding intermediate requests during rapid navigation. Moving over a normal text file keeps the tree visible; Enter opens its text view. → expands a folder or selects its first child, ← collapses it or selects its parent, Enter toggles a folder, and Esc returns to the terminal. Modified arrow shortcuts keep their existing meaning. Preview updates leave focus in Files so the next arrow still works there.
 
-Local preview panes watch their selected file's folder; saving refreshes the content. Remote Markdown uses a gentle three-second fallback poll. Watch requests are cancelled when replaced or closed. Close only Preview with its pane-header × or by focusing it and pressing ⌘⇧W; ⌘W closes the tab.
+Local preview panes watch their selected file's folder; saving refreshes the content. Remote Markdown uses a gentle three-second fallback poll. Watch requests are cancelled when replaced or closed. Close only Preview with its pane-header × or by focusing it and pressing ⌘⌥W (the host consumes ⌘⇧W before the pane keymap); ⌘W closes the tab.
 
 **Images.** Native JPG / PNG / SVG are used where suitable. macOS `sips` prepares other supported formats and downsamples large images to a longest edge of 2048 px, keeping source files unchanged. Cache paths include source identity and version information, so a save cannot reuse a stale decoded image. Disk cache uses a 256 MiB / 128-file least-recently-used budget. One preparation job runs per preview, with only the latest pending selection retained. Closing discards pending work and script references; Herdr controls native decoded-image and GPU cache retirement.
 
@@ -47,7 +47,7 @@ With two or more user turns, the transcript has a right-edge dot rail. Hover a d
 | `md-preview-tools` | Markdown / Source and image rendering; `images.js` + `images.py` prepare bounded caches |
 | `history-tools` | History UI and `history.py` local transcript index / reader |
 
-The layout also uses shipped `workspace-chrome` for its footer, `workspace-status`, `changes`, and Herdr's shared menus/icons. Those are supplied by Herdr and are not overwritten. `keys.json` only adds `layout:pixel-sessions` / `cmd-p`; `programs.json` contains only two optional icon overrides.
+The layout also uses shipped `workspace-chrome` for its footer, `workspace-status`, `changes`, and Herdr's shared menus/icons. Those are supplied by Herdr and are not overwritten. `keys.json` only adds `layout:pixel-sessions` / `cmd-p` and `cmd-alt-w`; `programs.json` contains only two optional icon overrides.
 
 Preview props are `{ file, on?, tab?, selectionKey? }`. The managed file selection is shared by tab, while a standalone preview can use `{ file, on }`. Source and image generation are bounded and asynchronous. Herdr APIs include `spaces`, `panes`, `focused`, `agents`, `machines`, `shared` / `setShared`, `run`, `nextCommand`, `exec`, `hc`, `readTextFile`, `watchFolder`, `theme`, `settings`, `props`, and `checking`. GPUI provides focus handles, `ScrollHandle`, native controls, Markdown, images and editors.
 
