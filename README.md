@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-One [Herdr desktop](https://herdr.dev/) layout for pixel space avatars, recognisable Claude agents, local session history, and a reusable Markdown/image preview beside your terminal.
+One [Herdr desktop](https://herdr.dev/) layout for pixel space avatars, recognisable Claude agents, local session history, and a reusable file preview beside your terminal.
 
 ![Pixel Sessions](preview.png)
 
@@ -12,8 +12,8 @@ Native Herdr demos use the published layout geometry and synthetic spaces, agent
 
 - **Pixel spaces:** 15 coloured sprites, a matching space picker, and a bell for agents that need attention. Option-click a space sprite to change it.
 - **Clawd icons:** 39 mascot variants for Claude agents in the sidebar, tabs, and pane headers. The terminal address determines the variant, so it stays consistent across those views.
-- **Files + Preview:** click Markdown or an image to open a pane to the terminal's right. Further selections reuse that tab's preview. Saving a file refreshes its preview.
-- **Keyboard browsing:** click Files, then use ↑/↓ to move through visible rows while Preview follows supported files. The selection stays highlighted and scrolls into view. ←/→ navigates folders; Enter opens a file or toggles a folder; Esc returns to the terminal. Passing a plain-text file with the arrows keeps the tree visible.
+- **Files + Preview:** click a file to open a pane to the terminal's right. Further selections reuse that tab's preview. Saving a file refreshes its preview.
+- **Keyboard browsing:** click Files, then use ↑/↓ to move through visible rows while Preview follows the selected file. The selection stays highlighted and scrolls into view. ←/→ navigates folders; Enter opens a file or toggles a folder; Esc returns to the terminal.
 - **History:** browse and search local Claude Code, Codex, and Pi sessions, inspect transcripts, and resume a session in a new local tab. Transcript dots show each user turn: hover for its prompt and click to jump there.
 
 The status bar remains Herdr's stock status bar. This package does not include quota queries, credential readers, or Quote/0 integration.
@@ -21,8 +21,8 @@ The status bar remains Herdr's stock status bar. This package does not include q
 ## Requirements and limits
 
 - Herdr desktop **0.1.16** is the tested version. Run the mod checks when using a newer release. This is not a Herdr TUI layout.
-- `python3` for History and image preparation; `git` for repository state.
-- Image preparation currently targets **macOS** and uses its built-in `sips`. Image files on remote machines must be copied locally first. Markdown can be read from connected machines.
+- `python3` for History and file previews; `git` for repository state.
+- Image preparation currently targets **macOS** and uses its built-in `sips`. Rich image previews require local files. On connected machines, Python 3 enables the same bounded text and hex previews. Herdr can still preview small UTF-8 files if remote Python is unavailable.
 - The matching `claude`, `codex`, or `pi` executable must be installed to Resume that agent.
 
 JPG, PNG, SVG, GIF, BMP, TIFF, HEIC, HEIF, AVIF, ICNS, JP2, PSD, and WebP have been checked with sample files. GIF previews are still images. Additional ImageIO/RAW formats are best effort.
@@ -50,9 +50,9 @@ Keep your other layouts. ⌘⇧L cycles through them. If you renamed this layout
 
 ## Using Preview
 
-Open **Files**, then click a Markdown or image file. Files stays visible; the preview opens as a normal split pane in the current tab. Click Files again before using its keyboard controls.
+Open **Files**, then click any file. Files stays visible; the preview opens as a normal split pane in the current tab. Click Files again before using its keyboard controls.
 
-To close just Preview, click it and press **⌘⌥W** (Herdr 0.1.16 consumes ⌘⇧W before pane bindings), or hover its pane header and click **×**. **⌘W closes the entire tab.** Markdown and SVG also have a Source view. Relative Markdown links open in Preview; external links open only when clicked.
+To close just Preview, click it and press **⌘⌥W** (Herdr 0.1.16 consumes ⌘⇧W before pane bindings), or hover its pane header and click **×**. **⌘W closes the entire tab.** Markdown renders with a Source option, and supported images display inline. Text and source code open in a read-only editor. Other binary formats, such as PDF and archives, display the file size and a hex/ASCII sample. Preview reads at most 256 KiB of text and displays at most 512 bytes of binary data. Relative file links open in Preview. External links open only when clicked.
 
 Closing a preview cancels its file watch and discards its script references and pending selection. Herdr controls decoded image and GPU cache retirement; process memory need not fall immediately after closing a pane.
 
@@ -60,13 +60,13 @@ Closing a preview cancels its file watch and discards its script references and 
 
 ## Data and processes
 
-Mods are trusted local code. Files reads the selected project, runs directory-listing and read-only Git commands, and watches local files. Pixel spaces queries `git` and `hc`, including machines you already connected to Herdr. History runs Python, reads local agent transcripts, and caches an index in `~/.cache/herdr-history-tools/`. Image preparation runs Python and `sips` and writes only its preview cache under Herdr's app folder. Resume starts the selected agent's CLI only when clicked.
+Mods are trusted local code. Files reads the selected project, runs directory-listing and read-only Git commands, and watches local files. Pixel spaces queries `git` and `hc`, including machines you already connected to Herdr. History runs Python, reads local agent transcripts, and caches an index in `~/.cache/herdr-history-tools/`. File previews read bounded file prefixes with Python. Image preparation also runs `sips` and writes only its preview cache under Herdr's app folder. Resume starts the selected agent's CLI only when clicked.
 
 There are no autonomous HTTP requests or credential reads in this package. It ships no personal sessions, machine addresses, app state, or preview cache.
 
 ## Validation
 
-All ten mods pass the initial native `herdr-app check` on 0.1.16. Image preparation was exercised with local macOS sample files; Markdown split previews, save refresh, HEIC and SVG rendering were also checked in the app with demonstration files. Keyboard/focus routing, lifecycle cleanup, parser edge cases, and Resume arguments are covered by synthetic tests. Real-agent Resume and remote Markdown were not tested end to end.
+All ten mods pass the initial native `herdr-app check` on 0.1.16. Image preparation was exercised with local macOS sample files; Markdown split previews, save refresh, HEIC and SVG rendering were also checked in the app with demonstration files. Keyboard/focus routing, lifecycle cleanup, parser edge cases, and Resume arguments are covered by synthetic tests. The generic preview passed native rendering and save-refresh checks with local test files. Real-agent Resume and remote file preview have not been tested end to end. Run `node --test tests/preview.test.mjs` to check routing, loading, and performance with generated fixtures. See [the test baseline](tests/BASELINE.md).
 
 ## Credits and licensing
 

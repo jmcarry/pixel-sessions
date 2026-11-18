@@ -1,18 +1,20 @@
 // Modified for Pixel Sessions; pinned upstream provenance and licensing are in THIRD_PARTY_NOTICES.md.
-// A Markdown preview pane. Open it beside a terminal:
+// A file preview pane. Open it beside a terminal:
 //   herdr-app do pane.split --direction right --mod md-preview-tools --props '{"file":"/abs/README.md"}'
 // props: { file: absolute path, on?: machine name (null: this computer) }.
 // The preview follows saves (folder watch here, a gentle poll on other machines),
-// toggles to the source, and follows relative .md links inside the pane.
-import { View, div, svg, image } from "gpui-kit";
+// toggles to the source, and follows relative file links inside the pane.
+import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex, TextView, Editor, EditorState } from "gpui-base";
-import { readTextFile, watchFolder, theme, settings, exec, window, props, checking, shared } from "herdr";
+import { watchFolder, theme, settings, exec, window, props, checking, shared } from "herdr";
 
 import { isImagePath, prepareImage } from "./images.js";
+import { isMarkdown, readPreviewFile, sourceLanguage } from "./files.js";
 
-const MAX = 300000;
 const dirname = (p) => p.replace(/[\\/][^\\/]*$/, "") || "/";
 const basename = (p) => p.split(/[\\/]/).pop();
+const fileSize = (n) => n < 1024 ? `${n} B` : n < 1024 * 1024
+  ? `${(n / 1024).toFixed(1)} KiB` : `${(n / (1024 * 1024)).toFixed(1)} MiB`;
 
 // Resolves a link inside the document against the shown file's folder.
 function resolve(file, href) {
@@ -47,7 +49,7 @@ export default class MarkdownPreview extends View {
     this.history = [];
     this.mode = "preview";
     this.file = selected?.file ?? p.file ?? p.props?.file ?? null;
-    this.text = null; this.imageData = null; this.error = null; this.sourceError = null;
+    this.text = null; this.imageData = null; this.fileInfo = null; this.notice = null; this.error = null; this.sourceError = null;
     if (checking()) return;
     this.open(this.file, cx);
     // Other machines use a gentle poll; failed local watches get the same fallback.
@@ -66,7 +68,7 @@ export default class MarkdownPreview extends View {
   }
 
   open(file, cx) {
-    this.file = file; this.text = null; this.imageData = null; this.error = null; this.sourceError = null;
+    this.file = file; this.text = null; this.imageData = null; this.fileInfo = null; this.notice = null; this.error = null; this.sourceError = null;
     this.source?.release(); this.source = null;
     this.watchGeneration++;
     this.watchRequest?.cancel(); this.watchRequest = null; this.watched = null;
@@ -101,7 +103,7 @@ export default class MarkdownPreview extends View {
     this.watchGeneration++; this.watched = null;
     this.watchRequest?.cancel(); this.watchRequest = null;
     this.source?.release(); this.source = null;
-    this.imageData = null; this.text = null; this.file = null; this.sourceError = null;
+    this.imageData = null; this.text = null; this.file = null; this.fileInfo = null; this.notice = null; this.sourceError = null;
     this.history = []; this.imageBounds = null;
   }
 
@@ -120,31 +122,41 @@ export default class MarkdownPreview extends View {
           const { file, on, token } = this.pendingLoad;
           this.pendingLoad = null;
           try {
-            let picture = null, text = null, sourceError = null;
+            let picture = null, data = null, notice = null, sourceError = null;
             if (isImagePath(file)) {
-              picture = await prepareImage(file, { on });
+              try { picture = await prepareImage(file, { on }); }
+              catch (error) { notice = `Image preview unavailable. ${error?.message ?? error}`; }
+            }
+            if (this.closed || this.loadToken !== token) continue;
+            if (picture) {
               if (/\.svg$/i.test(file)) {
-                try { text = await readTextFile(file, { on }); }
-                catch { sourceError = "Source is unavailable: SVG text exceeds the text-preview limit or cannot be read."; }
-                if (text === null && !sourceError) sourceError = "SVG source is no longer available.";
+                try {
+                  const svgSource = await readPreviewFile(file, on);
+                  if (svgSource.kind === "text") data = svgSource;
+                  else sourceError = "SVG source cannot be read.";
+                } catch { sourceError = "SVG source cannot be read."; }
               }
-            } else text = await readTextFile(file, { on });
+            } else {
+              data = await readPreviewFile(file, on);
+              if (data.kind === "error") throw new Error(data.message);
+            }
             if (this.closed || this.loadToken !== token || this.file !== file || this.on !== on) continue;
             this.error = null; this.sourceError = sourceError;
-            if (picture) this.imageData = picture;
-            else if (text === null) { this.error = "This file is no longer available"; this.text = null; cx.notify(); continue; }
-            if (text !== null) {
-              const clipped = text.length > MAX ? text.slice(0, MAX) + "\n\n… (file truncated)" : text;
-              if (clipped !== this.text) {
-                this.text = clipped; this.version = (this.version ?? 0) + 1;
-                this.source?.release(); this.source = null;
-                this.ensureSource();
-              }
+            this.imageData = picture;
+            this.notice = notice;
+            const oldKind = this.fileInfo?.kind;
+            this.fileInfo = data ? { kind: data.kind, size: data.size, truncated: data.truncated } : null;
+            const content = data?.hex ?? data?.text ?? null;
+            if (content !== this.text || oldKind !== data?.kind) {
+              this.text = content; this.version = (this.version ?? 0) + 1;
+              this.source?.release(); this.source = null;
             }
+            this.ensureSource();
           } catch (e) {
             if (!this.closed && this.loadToken === token && this.file === file && this.on === on) {
               this.error = `Cannot preview this file: ${e?.message ?? e}`;
-              this.text = null; this.imageData = null;
+              this.text = null; this.imageData = null; this.fileInfo = null; this.notice = null;
+              this.source?.release(); this.source = null;
             }
           }
           if (!this.closed && this.loadToken === token) cx.notify();
@@ -159,19 +171,25 @@ export default class MarkdownPreview extends View {
       exec(w === "windows" ? "explorer" : w === "macos" ? "open" : "xdg-open", [href]).catch(() => null);
       return;
     }
+    if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) return;
     const target = resolve(this.file, href);
-    if (target && (/\.(md|markdown|mdx)$/i.test(target) || isImagePath(target))) {
+    if (target) {
       this.history.push(this.file); this.mode = "preview"; this.open(target, cx);
     }
   }
 
-  // Build Source outside render, preserving the original Markdown/SVG text.
+  // Build the read-only editor outside render, including the hex fallback.
   ensureSource() {
-    if (this.source || this.text === null || this.mode !== "source") return;
+    if (this.source || this.text === null || (this.richPreview() && this.mode !== "source")) return;
     const t = theme();
-    this.source = EditorState.new({ language: /\.svg$/i.test(this.file) ? "xml" : "markdown", readonly: true, value: this.text,
+    const language = this.fileInfo?.kind === "binary" ? "txt" : sourceLanguage(this.file);
+    this.source = EditorState.new({ language, readonly: true, value: this.text,
       font_family: settings().font_family, font_size: 12,
       syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
+  }
+
+  richPreview() {
+    return Boolean(this.imageData || (this.fileInfo?.kind === "text" && isMarkdown(this.file)));
   }
 
   sourceView(t) {
@@ -199,20 +217,28 @@ export default class MarkdownPreview extends View {
 
   render(cx) {
     if (!checking()) this.syncSelection(cx);
-    const t = theme(), picture = isImagePath(this.file), canSource = !picture || /\.svg$/i.test(this.file);
-    const preview = this.mode !== "source" || !canSource;
-    const ready = picture ? this.imageData !== null : this.text !== null;
+    const t = theme(), picture = Boolean(this.imageData);
+    const rich = this.richPreview(), canSource = rich && (!picture || /\.svg$/i.test(this.file));
+    const preview = rich && (this.mode !== "source" || !canSource);
+    const ready = picture || this.text !== null;
+    const info = this.fileInfo;
+    const binary = info?.kind === "binary";
     return v_flex().id("md-preview").size_full().min_h(0).bg(t.background).text_color(t.foreground).text_size(13)
       .child(h_flex().h(38).flex_none().px(12).gap(6).items_center().border_b(1).border_color(t.border)
         .when(this.history.length > 0, (el) => el.child(this.button("md-back", "←", false, t, (_e, cx) => { this.mode = "preview"; this.open(this.history.pop(), cx); })))
-        .child(div().font_semibold().flex_none().child(this.file ? basename(this.file) : "Preview"))
+        .child(div().font_semibold().min_w(0).max_w(260).truncate().child(this.file ? basename(this.file) : "Preview"))
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(this.file ? dirname(this.file) : ""))
         .when(Boolean(picture && this.imageData), el => el.child(div().flex_none().text_size(10).text_color(t.dim)
           .tooltip(this.imageData.resized ? `Preview: ${this.imageData.width}×${this.imageData.height} · original unchanged` : "Original dimensions")
           .child(`${this.imageData.format} · ${this.imageData.originalWidth ?? this.imageData.width}×${this.imageData.originalHeight ?? this.imageData.height}`)))
-        .child(this.button("md-mode-preview", "Preview", preview, t, (_e, cx) => { this.mode = "preview"; cx.notify(); }))
-        .when(canSource, el => el.child(this.button("md-mode-source", "Source", !preview, t, (_e, cx) => { this.mode = "source"; this.ensureSource(); cx.notify(); }))))
+        .when(rich, el => el.child(this.button("md-mode-preview", "Preview", preview, t, (_e, cx) => { this.mode = "preview"; cx.notify(); })))
+        .when(canSource, el => el.child(this.button("md-mode-source", "Source", !preview, t, (_e, cx) => { this.mode = "source"; this.ensureSource(); cx.notify(); })))
+        .when(Boolean(info && !rich), el => el.child(div().flex_none().text_size(11).text_color(t.dim)
+          .child([binary ? "Hex" : "Text", Number.isFinite(info.size) ? fileSize(info.size) : null].filter(Boolean).join(" · ")))))
       .when(!ready, (el) => el.child(div().p(16).text_color(this.error ? t.ansi1 : t.dim).child(this.error ?? "Loading…")))
+      .when(Boolean(this.notice), el => el.child(div().px(12).py(6).text_size(11).text_color(t.dim).child(this.notice)))
+      .when(Boolean(info?.truncated && (!picture || !preview)), el => el.child(div().px(12).py(6).text_size(11).text_color(t.dim)
+        .child(binary ? "Showing the first 512 bytes." : "Showing the first 256 KiB of text.")))
       .when(ready && !preview, (el) => el.child(this.sourceView(t)))
       .when(ready && preview && picture, (el) => el.child(this.imageView()))
       .when(ready && preview && !picture, (el) => el.child(

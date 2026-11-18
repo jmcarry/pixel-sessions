@@ -1,8 +1,8 @@
 // Modified for Pixel Sessions; pinned upstream provenance and licensing are in THIRD_PARTY_NOTICES.md.
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState, TextView, ScrollHandle } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, run, checking, shared, setShared, nextCommand } from "herdr";
+import { v_flex, h_flex, ScrollHandle } from "gpui-base";
+import { spaces, panes, focused, exec, watchFolder, theme, window, run, checking, shared, setShared, nextCommand } from "herdr";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -13,10 +13,7 @@ function location() {
   return { cwd: pane?.cwd || f?.cwd || terminal?.cwd || space?.folder, on, space: space?.id };
 }
 const key = () => JSON.stringify(location());
-const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", toml: "yaml", jsonc: "json", svelte: "html", vue: "html" };
 const PER_FOLDER = 500, TOTAL = 5000;
-const isMarkdown = (path) => /\.(md|markdown|mdx)$/i.test(path ?? "");
-const isImagePath = (path) => /\.(?:jpe?g|jpe|png|svg|gif|webp|avif|heic|heif|heics|tiff?|bmp|icns|ico|jp2|j2k|jpf|jpx|psd|dng|cr2|cr3|nef|nrw|arw|raf|orf|rw2|pef|srw|exr|tga|pict|pct)$/i.test(path ?? "");
 
 async function directory(path, on) {
   const windowsDirectory = async () => {
@@ -82,7 +79,6 @@ export default class Files extends View {
 
   close() {
     this.watchRequest?.cancel();
-    this.code?.release();
   }
 
   current(context) {
@@ -101,15 +97,14 @@ export default class Files extends View {
   refresh(cx) {
     const { cwd, on } = location(), next = key();
     if (next !== this.context?.key) {
-      if (this.context) this.saved.set(this.context.key, { folders: this.folders, file: this.file, selected: this.selected, selectedIndex: this.selectedIndex });
+      if (this.context) this.saved.set(this.context.key, { folders: this.folders, selected: this.selected, selectedIndex: this.selectedIndex });
       this.watchRequest?.cancel(); this.watchRequest = null;
       const saved = this.saved.get(next);
       this.selected = saved?.selected ?? null; this.selectedIndex = saved?.selectedIndex ?? 0;
       this.selectionGeneration++; this.previewFocus = null; this.revealed = null;
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
-      this.pending = new Set(); this.marks = {}; this.show(null); this.watched = null; this.error = null; this.limited = false;
+      this.pending = new Set(); this.marks = {}; this.watched = null; this.error = null; this.limited = false;
       this.loading = false;
-      if (saved?.file) this.show(saved.file, cx);
     }
     if (!cwd || this.loading) return;
     const context = this.context;
@@ -133,7 +128,6 @@ export default class Files extends View {
         }
         if (!this.current(context)) return;
         this.marks = marks; this.error = null; this.watch(cwd, cx);
-        if (this.file) this.show(this.file, cx, true);
       } catch (e) { if (this.current(context)) this.error = String(e); }
       finally { if (this.context === context) this.loading = false; cx.notify(); }
     });
@@ -158,53 +152,6 @@ export default class Files extends View {
       }
     }
     cx.notify();
-  }
-
-  show(path, cx, refresh = false) {
-    if (!refresh) {
-      this.code?.release(); this.code = null; this.file = path; this.fileError = null;
-      this.markdown = null; this.mdSource = false; this.fileText = null;
-    }
-    if (!path || !cx) return;
-    const context = this.context, root = this.root, on = this.on;
-    cx.spawn(async cx => {
-      try {
-        const text = await readTextFile(`${root}/${path}`, { on });
-        if (this.file !== path || !this.current(context)) return;
-        if (refresh && text === this.fileText) return;
-        this.code?.release(); this.code = null; this.markdown = null;
-        this.fileText = text; this.fileError = null;
-        if (text === null) { this.fileError = "This file is no longer available"; return; }
-        if (text.includes("\0")) { this.fileError = "Binary file · no text preview"; return; }
-        if (isMarkdown(path)) { this.markdown = text.length > 300000 ? text.slice(0, 300000) + "\n\n… (file truncated)" : text; this.mdVersion = (this.mdVersion ?? 0) + 1; }
-        const t = theme(), ext = path.includes(".") ? path.split(".").pop() : "txt";
-        this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: true,
-          value: text.length > 400000 ? text.slice(0, 400000) + "\n… (file truncated)" : text,
-          font_family: settings().font_family, font_size: 12,
-          syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
-      } catch { if (this.file === path && this.current(context)) this.fileError = "Cannot preview this file (binary, too large, or unreadable)"; }
-      finally { cx.notify(); }
-    });
-  }
-
-  // Relative .md links open in this panel; web links in the browser.
-  followLink(url, cx) {
-    if (/^(https?|mailto):/i.test(url)) {
-      const w = window()?.platform;
-      exec(w === "windows" ? "explorer" : w === "macos" ? "open" : "xdg-open", [url]).catch(() => null);
-      return;
-    }
-    let target;
-    try { target = decodeURI(url.split("#")[0]); } catch { return; }
-    if (!target || target.startsWith("/") || !isMarkdown(target)) return;
-    const parts = [...this.file.split("/").slice(0, -1), ...target.split("/")], out = [];
-    for (const part of parts) { if (part === "..") out.pop(); else if (part && part !== ".") out.push(part); }
-    this.show(out.join("/"), cx); cx.notify();
-  }
-
-  selectFile(path, cx, { focusPreview = true } = {}) {
-    if (isMarkdown(path) || isImagePath(path)) this.openPane(path, { focusPreview, cx });
-    else this.show(path, cx);
   }
 
   // Resolve the new pane after the host applies a split. Never guess ownership
@@ -235,7 +182,7 @@ export default class Files extends View {
     return next;
   }
 
-  openPane(path = this.file, { focusPreview = true, cx = null } = {}) {
+  openPane(path, cx) {
     if (!path || !this.root) return;
     const all = panes(), focus = focused();
     const space = spaces().find(s => s.active);
@@ -247,7 +194,7 @@ export default class Files extends View {
     const registry = this.syncPreviewPanes(cx);
     const entry = registry[tab];
     const existing = all.find(p => p.tab === tab && p.mod === "md-preview-tools" && p.pane === entry?.pane);
-    if (existing) { if (focusPreview) run("pane.focus", { pane: existing.pane }); return; }
+    if (existing) return;
     // A second click while the host is applying the first split only updates
     // its shared selection, so rapid file changes do not add duplicate panes.
     if (entry?.before && Date.now() - entry.requestedAt < 1500) return;
@@ -256,7 +203,7 @@ export default class Files extends View {
       ?? mine.find(p => p.mod !== "md-preview-tools");
     if (!source) return;
     setShared("md-preview-tools.panes", { ...registry, [tab]: { before: mine.map(p => p.pane), requestedAt: Date.now() } });
-    if (!focusPreview) this.previewFocus = { tab, context: this.context };
+    this.previewFocus = { tab, context: this.context };
     run("pane.split", { pane: source.pane, direction: "right", mod: "md-preview-tools",
       props: { file: `${this.root}/${path}`, on: this.on ?? null, tab, selectionKey } });
   }
@@ -292,27 +239,26 @@ export default class Files extends View {
     }
   }
 
-  choose(row, cx, { activate = false, toggle = false, delay = 0 } = {}) {
+  choose(row, cx, { toggle = false, delay = 0 } = {}) {
     if (!row) return;
     this.selected = row.path;
     this.handle.focus();
     const generation = ++this.selectionGeneration, context = this.context;
     if (row.entry.dir) {
       if (toggle) this.toggle(row.path, cx);
-    } else if (isMarkdown(row.path) || isImagePath(row.path)) {
+    } else {
       const preview = cx => {
         if (this.selectionGeneration !== generation || this.context !== context || this.selected !== row.path || !this.handle.is_focused()) return;
-        this.show(null);
-        this.selectFile(row.path, cx, { focusPreview: false });
+        this.openPane(row.path, cx);
       };
       if (delay) cx.timer.after(delay, preview);
       else preview(cx);
-    } else if (activate) this.show(row.path, cx);
+    }
     cx.notify();
   }
 
   keyDown(event, cx) {
-    if (!this.handle.is_focused() || this.file) return;
+    if (!this.handle.is_focused()) return;
     const modifiers = event.modifiers ?? {};
     if (modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift) return;
     const rows = this.visibleRows(), key = event.key;
@@ -330,7 +276,7 @@ export default class Files extends View {
       if (current.entry.dir && this.folders.has(current.path)) this.toggle(current.path, cx);
       else if (current.parent) this.choose(rows.find(row => row.path === current.parent), cx);
     } else if (key === "enter" && current) {
-      this.choose(current, cx, { activate: true, toggle: current.entry.dir });
+      this.choose(current, cx, { toggle: current.entry.dir });
     } else if (key === "escape") {
       this.selectionGeneration++; this.previewFocus = null;
       const tab = focused()?.tab;
@@ -347,7 +293,7 @@ export default class Files extends View {
       return h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer()
         .when(this.selected === path, el => el.bg(t.selected))
         .when(this.selected !== path, el => el.hover(s => s.bg(t.hover)))
-        .on_click((_event, cx) => { cx.stop_propagation(); this.choose(row, cx, { activate: true, toggle: entry.dir }); })
+        .on_click((_event, cx) => { cx.stop_propagation(); this.choose(row, cx, { toggle: entry.dir }); })
         .child(entry.dir ? svg(`mods/files-md-tools/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/files-md-tools/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
@@ -363,24 +309,13 @@ export default class Files extends View {
     const t = theme(), visible = this.visibleRows();
     this.revealSelection(visible);
     return v_flex().id("files").track_focus(this.handle).on_key_down((event, cx) => this.keyDown(event, cx))
-      .when(!this.file, el => el.on_mouse_down("left", () => this.handle.focus()))
+      .on_mouse_down("left", () => this.handle.focus())
       .size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .when(Boolean(this.file), el => el.child(div().id("files-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { this.show(null); cx.notify(); }).child("←")))
         .child(div().font_semibold().child("Files"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.file ?? this.root?.split(/[\\/]/).pop() ?? ""))
-        .when(isMarkdown(this.file), el => {
-          const chip = (id, label, on, action) => div().id(id).h(22).px(7).flex().flex_none().items_center().rounded(5).cursor_pointer().text_size(11)
-            .bg(on ? t.selected : t.background).text_color(on ? t.foreground : t.muted).hover(s => s.bg(t.hover)).on_click(action).child(label);
-          return el.child(chip("md-preview", "Preview", !this.mdSource, (_e, cx) => { this.mdSource = false; cx.notify(); }))
-            .child(chip("md-source", "Source", this.mdSource, (_e, cx) => { this.mdSource = true; cx.notify(); }))
-            .child(chip("md-pane", "↗", false, () => this.openPane()));
-        }))
-      .when(!this.file, el => el.child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().track_scroll(this.scroll).p(6).children(this.rows(visible, t))
+        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? "")))
+      .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().track_scroll(this.scroll).p(6).children(this.rows(visible, t))
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
-        .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
-      .when(Boolean(this.file) && this.markdown !== null && !this.mdSource, el => el.child(div().id("files-md-scroll").flex_1().min_h(0).overflow_y_scrollbar().px(16).py(12)
-        .child(TextView.markdown(`files-md-${this.mdVersion}`, this.markdown).selectable().on_link_click((url, cx) => this.followLink(url, cx)))))
-      .when(Boolean(this.file) && (this.markdown === null || this.mdSource), el => el.child(this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")));
+        .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total"))));
   }
 }
