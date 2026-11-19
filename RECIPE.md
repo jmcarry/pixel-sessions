@@ -1,6 +1,6 @@
 # Pixel Sessions
 
-A native Herdr desktop workspace with colourful pixel space avatars, distinct Claude mascots, Files / Changes / History tabs, and a reusable preview pane beside the terminal. Browse files with the keyboard, inspect a past conversation, then resume it in a new local tab. The layout inherits the person's theme rather than imposing one.
+A native Herdr desktop workspace with colourful pixel space avatars, distinct Claude mascots, Files / Changes / History tabs, and a reusable preview pane beside the terminal. Browse files with the keyboard, inspect a past conversation, then resume it in a new tab on its original host. The layout inherits the person's theme rather than imposing one.
 
 ![Pixel Sessions](preview.png)
 
@@ -18,7 +18,7 @@ A native Herdr desktop workspace with colourful pixel space avatars, distinct Cl
 
 **Agents and spaces.** `blocked` and unread `done` agents appear in the header's bell count. Blocked takes priority; clicking the bell focuses the most urgent agent. Working uses a native spinner and idle is quiet. The same terminal keeps its mascot across status changes. A new space receives a least-used sprite and keeps it by space id. Option-click changes that sprite without changing the selected space. Plain click, right-click menus, drag order, worktree grouping and machine controls retain Herdr's behaviour. The search button and this layout's ⌘P open the pixel picker; arrows and Enter select a tab and Esc closes it.
 
-**Files and preview.** Selecting any file creates a preview to the right of an explicit terminal pane. The file tree remains visible. Further selections in that tab update the existing managed preview, including fast successive selections while the host is applying the first split. A separately opened manual preview remains independent. Preview shows the filename/folder and, for images, the original dimensions; images fit with their aspect ratio preserved. Markdown and SVG have Preview / Source controls. Text and code use a read-only editor. Other binary formats show the file size and a hex/ASCII sample. Relative file links stay in Preview. External links open only on click.
+**Files and preview.** Selecting any file creates a preview to the right of an explicit terminal pane. The file tree remains visible. Right-click a file for Copy Path, Rename, and Delete. Local macOS adds Reveal in Finder and moves deleted files to Trash. Remote delete requires explicit confirmation and removes only the selected file. Rename is exclusive and refuses existing targets. Further selections in that tab update the existing managed preview, including fast successive selections while the host is applying the first split. A separately opened manual preview remains independent. Preview shows the filename/folder and, for images, the original dimensions; images fit with their aspect ratio preserved. Markdown and SVG have Preview / Source controls. Text and code use a read-only editor. Other binary formats show the file size and a hex/ASCII sample. Relative file links stay in Preview. External links open only on click.
 
 Click Files to give it keyboard focus. ↑/↓ selects visible rows, highlights them, and scrolls them into view. Previews follow the selected file after a short 90 ms selection delay, discarding intermediate requests during rapid navigation. The file tree stays visible while reading text or binary files. → expands a folder or selects its first child, ← collapses it or selects its parent, Enter toggles a folder, and Esc returns to the terminal. Modified arrow shortcuts keep their existing meaning. Preview updates leave focus in Files so the next arrow still works there.
 
@@ -26,7 +26,7 @@ Local preview panes watch their selected file's folder; saving refreshes the con
 
 **Images.** Native JPG / PNG / SVG are used where suitable. macOS `sips` prepares other supported formats and downsamples large images to a longest edge of 2048 px, keeping source files unchanged. Cache paths include source identity and version information, so a save cannot reuse a stale decoded image. Disk cache uses a 256 MiB / 128-file least-recently-used budget. One preparation job runs per preview, with only the latest pending selection retained. Closing discards pending work and script references; Herdr controls native decoded-image and GPU cache retirement.
 
-**History.** Read local Claude Code, Codex and Pi transcript stores and display the 100 most recent matching conversations. Search filters client-side. “This folder” uses the focused local repository root or folder; “All” shows local history across folders. Clicking a row reads its last 400 transcript entries, with tool output abbreviated. Resume starts `claude --resume <id>`, `codex resume <id>`, or `pi --session <file>` in a new local tab in the recorded folder. A remote focused space does not redirect a local transcript's resume to that machine.
+**History.** Current space follows its machine. Local and the connected machine chips override the selection. Run the transcript reader with Python 3 on the selected machine and show its 100 most recent matching conversations. “This folder” resolves the repository root on the active host, and “All” shows every folder on the selected host. Read a transcript on its owning host and show up to 400 entries. Resume starts `claude --resume <id>`, `codex resume <id>`, or `pi --session <file>` on that host in the recorded directory. Results from an earlier host must not replace the selected host’s list.
 
 With two or more user turns, the transcript has a right-edge dot rail. Hover a dot for its turn number and prompt. Clicking restarts the lazy transcript list at that turn; “Show N earlier entries” returns to the complete retained transcript. This implements a jump without depending on an unavailable lazy-list scrolling API.
 
@@ -43,9 +43,9 @@ With two or more user turns, the transcript has a right-edge dot rail. Hover a d
 | `pane-clawd` | Current pane header with matching mascots and a human-readable Preview title |
 | `clawd-icons` | 39 SVG mascot assets and an empty `place: none` mod |
 | `tabs-tools` | Current tabs plus the History panel button, mascot icons and remembered panels |
-| `files-md-tools` | Lazy Files tree, selected-row state, keyboard focus, per-tab preview routing |
+| `files-md-tools` | Lazy Files tree, selected-row state, keyboard focus, per-tab preview routing, file context menu, and `file_actions.py` |
 | `md-preview-tools` | Markdown, images, read-only text and hex; `file_preview.py` reads bounded file prefixes; `images.py` prepares bounded image previews |
-| `history-tools` | History UI and `history.py` local transcript index / reader |
+| `history-tools` | History UI and `history.py` per-machine transcript index and reader |
 
 The layout also uses shipped `workspace-chrome` for its footer, `workspace-status`, `changes`, and Herdr's shared menus/icons. Those are supplied by Herdr and are not overwritten. `keys.json` only adds `layout:pixel-sessions` / `cmd-p` and `cmd-alt-w`; `programs.json` contains only two optional icon overrides.
 
@@ -74,5 +74,5 @@ Processes: `git` and directory-listing commands for files/repositories, `hc` for
 4. Clicking any file opens a right-hand split, later selections reuse it, and Files stays visible. Saving refreshes it.
 5. Repeated ↑/↓ in Files changes the selected file and preview without focus leaving Files or extra panes appearing. Folder navigation works and the tree remains visible for ordinary files.
 6. A large local image produces a bounded preview without changing the source; HEIC / TIFF and native PNG / SVG samples render. Failed conversions show a bounded text or hex fallback and explain why the image is unavailable. Closing cancels watches and pending selections.
-7. History lists local conversations, transcript dots show prompts and jump to their turns, and Resume targets a new local tab with the correct agent arguments and folder.
+7. History lists conversations from the selected machine, transcript dots jump to their turns, and Resume opens a new tab on the original host with the correct agent arguments and directory.
 8. `preview.png` shows synthetic content, the default README is English with a Chinese link, and the public repository has topic `herdr-layout` for the official Gallery's Community indexing.

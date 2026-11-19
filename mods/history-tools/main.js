@@ -1,7 +1,7 @@
 // Modified for Pixel Sessions; pinned upstream provenance and licensing are in THIRD_PARTY_NOTICES.md.
 import { View, div, svg, image, list } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextView, Scrollbar } from "gpui-base";
-import { spaces, panes, focused, exec, appHome, home, theme, settings, run, notify, checking } from "herdr";
+import { spaces, machines, panes, focused, exec, appHome, home, readTextFile, theme, settings, run, checking } from "herdr";
 
 // One entry per agent whose transcripts history.py can read. `resume` builds
 // the command that reopens a session in its own folder.
@@ -18,7 +18,19 @@ const LIMIT = 100; // most recent sessions shown in the list
 function location() {
   const space = spaces().find((s) => s.active), f = focused();
   const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder || null, remote: Boolean(space?.machine) };
+  return { cwd: pane?.cwd || f?.cwd || space?.folder || null, machine: space?.machine ?? null };
+}
+
+async function history(machine, ...args) {
+  let command = [SCRIPT()];
+  if (machine) {
+    const source = await readTextFile(SCRIPT());
+    if (!source) throw new Error("History helper is missing.");
+    command = ["-c", source];
+  }
+  const result = await exec("python3", [...command, ...args], { on: machine, timeout: 30000 });
+  if (result.code !== 0) throw new Error(result.stderr.trim() || `exit ${result.code}`);
+  return JSON.parse(result.stdout);
 }
 
 function ago(ms) {
@@ -44,6 +56,7 @@ const short = (path, home) => (path && home && path.startsWith(home) ? "~" + pat
 export default class History extends View {
   init(_props, cx) {
     this.home = home(); this.sessions = []; this.agent = "all"; this.scope = "here"; this.query = "";
+    this.hostChoice = undefined;
     this.open = null; this.transcript = null; this.typing = false;
     // Turn rail state: `start` is the first message shown (a jump to a prompt
     // starts the transcript there), `top` the message at the top of the view.
@@ -54,46 +67,64 @@ export default class History extends View {
     this.input.on("focus", (_e, cx) => { this.typing = true; cx.notify(); });
     this.input.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
     if (checking()) return;
-    this.refresh(cx);
+    this.syncRoot(cx);
     // Transcripts grow while agents work; the index is cached, so this is cheap.
     cx.timer.every(20000, (cx) => this.refresh(cx));
   }
 
   refresh(cx) {
     if (checking() || this.loading) return;
-    this.loading = true;
+    const machine = this.machine;
+    const token = {};
+    this.loading = token;
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("python3", [SCRIPT(), "list"]);
-        if (r.code !== 0) throw new Error(r.stderr.trim() || `exit ${r.code}`);
-        this.sessions = JSON.parse(r.stdout); this.error = null;
-      } catch (e) { this.error = `Cannot read history: ${e}`; }
-      finally { this.loading = false; cx.notify(); }
+        const sessions = await history(machine, "list");
+        if (this.loading === token) {
+          this.sessions = sessions.map(session => ({ ...session, machine }));
+          this.error = null;
+        }
+      } catch (e) {
+        if (this.loading === token) {
+          this.error = `Cannot read history on ${machine ?? "this Mac"}: ${e.message ?? e}`;
+        }
+      } finally {
+        if (this.loading === token) { this.loading = null; cx.notify(); }
+      }
     });
   }
 
   // "This folder" means the repo the focused folder belongs to, else the folder itself.
   syncRoot(cx) {
-    const { cwd, remote } = location();
-    if (cwd === this.cwd && remote === this.remote) return;
-    this.cwd = cwd; this.remote = remote; this.root = remote ? null : cwd;
-    if (checking() || remote || !cwd) return;
+    const current = location();
+    const machine = this.hostChoice === undefined ? current.machine : this.hostChoice;
+    const cwd = machine === current.machine ? current.cwd : null;
+    const hostChanged = machine !== this.machine;
+    if (!hostChanged && cwd === this.cwd) return;
+    this.cwd = cwd; this.machine = machine; this.root = cwd;
+    if (hostChanged) {
+      this.sessions = []; this.open = null; this.transcript = null;
+      this.error = null; this.loading = null; this.hot = null;
+      this.refresh(cx);
+    }
+    if (checking() || !cwd) return;
     cx.spawn(async (cx) => {
-      const r = await exec("git", ["rev-parse", "--show-toplevel"], { cwd }).catch(() => null);
-      if (this.cwd === cwd && !this.remote && r?.code === 0) { this.root = r.stdout.trim(); cx.notify(); }
+      const r = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on: machine, timeout: 5000 }).catch(() => null);
+      if (this.cwd === cwd && this.machine === machine && r?.code === 0 && r.stdout.trim()) {
+        this.root = r.stdout.trim(); cx.notify();
+      }
     });
   }
 
   show(session, cx) {
     if (checking()) return;
     this.open = session; this.transcript = null; this.loadError = null; this.start = 0; this.top = 0; this.drawnTop = Infinity;
-    const ref = session.file;
+    const token = this.viewing = {};
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("python3", [SCRIPT(), "show", session.agent, ref]);
-        if (r.code !== 0) throw new Error(r.stderr.trim() || `exit ${r.code}`);
-        if (this.open === session) this.transcript = JSON.parse(r.stdout);
-      } catch (e) { if (this.open === session) this.loadError = String(e); }
+        const result = await history(session.machine, "show", session.agent, session.file);
+        if (this.open === session && this.viewing === token) this.transcript = result;
+      } catch (e) { if (this.open === session && this.viewing === token) this.loadError = String(e); }
       cx.notify();
     });
     cx.notify();
@@ -102,17 +133,18 @@ export default class History extends View {
   resume(session) {
     const argv = AGENTS[session.agent]?.resume?.(session);
     if (checking() || !argv) return;
-    if (session.cwd && location().remote) notify({ title: "History", body: "Resuming on this computer", level: "info", timeout: 3000 });
-    const local = spaces().filter((s) => !s.machine);
+    const machine = session.machine ?? null;
+    const available = spaces().filter((s) => (s.machine ?? null) === machine);
     const normalize = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "");
-    const folder = session.cwd || home();
-    const tabFor = new Map(local.flatMap((s) => (s.tabs || []).map((t) => [t.id, s])));
-    const exact = local.find((s) => normalize(s.folder) === normalize(folder))
-      ?? panes().filter((p) => p.terminal && normalize(p.cwd) === normalize(folder)).map((p) => tabFor.get(p.tab)).find(Boolean);
-    const space = exact ?? local.find((s) => s.active) ?? local[0];
-    const args = { argv, folder };
+    const folder = session.cwd;
+    const tabFor = new Map(available.flatMap((s) => (s.tabs || []).map((t) => [t.id, s])));
+    const exact = folder ? available.find((s) => normalize(s.folder) === normalize(folder))
+      ?? panes().filter((p) => p.terminal && normalize(p.cwd) === normalize(folder)).map((p) => tabFor.get(p.tab)).find(Boolean)
+      : null;
+    const space = exact ?? available.find((s) => s.active) ?? available[0];
+    const args = { argv, ...(folder ? { folder } : {}) };
     if (space) run("tab.new", { ...args, space: space.id });
-    else run("space.new", { ...args, machine: "" });
+    else run("space.new", { ...args, machine: machine ?? "" });
   }
 
   // Resume straight from the list: a quiet play icon that becomes a button on row hover.
@@ -130,7 +162,7 @@ export default class History extends View {
     const q = this.query.trim().toLowerCase();
     return this.sessions.filter((s) =>
       (this.agent === "all" || s.agent === this.agent) &&
-      (this.scope === "all" || inside(s.cwd, this.root)) &&
+      (this.scope === "all" || !this.cwd || inside(s.cwd, this.root)) &&
       (!q || s.title.toLowerCase().includes(q) || (s.cwd ?? "").toLowerCase().includes(q)));
   }
 
@@ -153,23 +185,31 @@ export default class History extends View {
 
   renderList(t) {
     const list = this.visible();
-    const here = this.scope === "here", counts = {};
-    for (const s of this.sessions) if (this.scope === "all" || inside(s.cwd, this.root)) counts[s.agent] = (counts[s.agent] ?? 0) + 1;
+    const here = this.scope === "here" && Boolean(this.cwd), counts = {};
+    for (const s of this.sessions) if (!here || inside(s.cwd, this.root)) counts[s.agent] = (counts[s.agent] ?? 0) + 1;
     const present = Object.keys(AGENTS).filter((a) => counts[a]);
-    const empty = here && this.remote ? "History is local. Choose All to browse this computer." : this.error || (this.loading && !this.sessions.length ? "Loading sessions…"
-      : here && !this.root ? "No folder" : this.query ? "No matching sessions" : here ? "No sessions in this folder" : "No sessions");
+    const hostNames = [...new Set([this.machine, ...machines().map(m => m.name)].filter(Boolean))];
+    const host = (id, label, machine) => this.chip(id, label, this.hostChoice === machine, t,
+      (_e, cx) => { this.hostChoice = machine; this.agent = "all"; this.syncRoot(cx); cx.notify(); });
+    const empty = this.loading && !this.sessions.length ? "Loading sessions…"
+      : this.query ? "No matching sessions" : here ? "No sessions in this folder" : "No sessions";
     return v_flex().size_full().min_h(0)
       .child(this.header(t, [
         div().font_semibold().child("History"),
         div().px(5).py(1).rounded(4).border_1().border_color(t.border).text_size(10).text_color(t.muted).child(`${list.length}`),
         div().flex_1(),
-        this.chip("scope-here", "This folder", here, t, (_e, cx) => { this.scope = "here"; cx.notify(); }),
+        ...(this.cwd ? [this.chip("scope-here", "This folder", here, t, (_e, cx) => { this.scope = "here"; cx.notify(); })] : []),
         this.chip("scope-all", "All", !here, t, (_e, cx) => { this.scope = "all"; cx.notify(); }),
         div().id("history-refresh").size(24).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(t.dim)
           .hover((s) => s.bg(t.hover).text_color(t.foreground)).on_click((_e, cx) => this.refresh(cx))
           .child(svg("mods/history-tools/history.svg").size(14).when(this.loading, (el) => el.spin(900))),
       ]))
       .child(v_flex().flex_none().px(10).pt(10).pb(8).gap(8).border_b(1).border_color(t.border)
+        .child(h_flex().id("history-hosts").gap(4).overflow_x_scrollbar()
+          .child(host("host-active", "Current space", undefined))
+          .child(host("host-local", "Local", null))
+          .children(hostNames.map(name => host(`host-${name}`, name, name))))
+        .child(div().text_size(11).text_color(t.dim).truncate().child(this.machine ?? "Local history"))
         .child(div().id("history-search").h(30).px(10).flex().items_center().rounded(8).border_1().border_color(this.typing ? t.accent : t.border).cursor_text()
           .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.input).h_full().text_size(12).text_color(t.foreground)))
         .child(h_flex().id("history-agents").gap(4).overflow_x_scrollbar()
@@ -177,7 +217,8 @@ export default class History extends View {
           .children(present.map((a) => this.chip(`agent-${a}`, `${AGENTS[a].name} ${counts[a]}`, this.agent === a, t,
             (_e, cx) => { this.agent = this.agent === a ? "all" : a; cx.notify(); }, this.icon(a, 13, t))))))
       .child(v_flex().id("history-list").flex_1().min_h(0).overflow_y_scrollbar().p(6).gap(2)
-        .when(!list.length, (el) => el.child(div().p(8).text_color(t.dim).child(empty)))
+        .when(Boolean(this.error), (el) => el.child(div().p(8).text_color(t.ansi1).child(this.error)))
+        .when(!this.error && !list.length, (el) => el.child(div().p(8).text_color(t.dim).child(empty)))
         .children(list.slice(0, LIMIT).map((s) =>
           h_flex().id(`session-${s.agent}-${s.id}`).flex_none().px(8).py(7).gap(10).items_center().rounded(8).cursor_pointer()
             .hover((st) => st.bg(t.hover)).on_click((_e, cx) => this.show(s, cx))
@@ -227,7 +268,7 @@ export default class History extends View {
       .child(h_flex().flex_none().px(14).py(8).gap(8).items_center().border_b(1).border_color(t.border).text_size(11).text_color(t.dim)
         .child(v_flex().flex_1().min_w(0).gap(2)
           .child(div().truncate().child(short(s.cwd, this.home) || "(unknown folder)"))
-          .child(div().truncate().child(`${a?.name ?? s.agent} · ${clock(s.created)} → ${ago(s.updated)}`)))
+          .child(div().truncate().child(`${a?.name ?? s.agent} · ${s.machine ?? "Local"} · ${clock(s.created)} → ${ago(s.updated)}`)))
         .child(div().id("history-resume").h(28).px(12).flex_none().flex().items_center().rounded(7).text_size(12)
           .bg(can ? t.solid : t.raised).text_color(can ? t.solid_foreground : t.dim).when(can, (el) => el.cursor_pointer())
           .on_click(() => this.resume(s)).child(can ? "Resume" : "View only")))

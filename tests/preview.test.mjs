@@ -27,7 +27,8 @@ function fileBrowser() {
     timer: { after: (_, callback) => jobs.push(callback) }, spawn() {},
   };
   const Files = loadView(readFileSync(new URL("../mods/files-md-tools/main.js", import.meta.url), "utf8"), "Files", {
-    checking: () => true, ScrollHandle: { new: () => ({}) }, panes: () => panes, focused: () => focus,
+    checking: () => true, props: () => ({}), FILE_CHANGE: "files-change",
+    ScrollHandle: { new: () => ({}) }, panes: () => panes, focused: () => focus,
     spaces: () => [{ active: true, id: "space" }], shared: (key) => state.get(key),
     setShared: (key, value) => state.set(key, value), run: (name, args) => commands.push({ name, args }),
   });

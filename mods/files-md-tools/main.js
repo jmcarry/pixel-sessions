@@ -2,7 +2,8 @@
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, ScrollHandle } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, theme, window, run, checking, shared, setShared, nextCommand } from "herdr";
+import { spaces, panes, focused, exec, watchFolder, theme, window, run, checking, shared, setShared, nextCommand, openOverlay, props } from "herdr";
+import { FILE_CHANGE, initFileMenu, renderFileMenu } from "./file-menu.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -42,6 +43,9 @@ async function directory(path, on) {
 
 export default class Files extends View {
   init(_props, cx) {
+    const target = props();
+    if (target?.action) { initFileMenu(this, cx, target); return; }
+    this.lastFileChange = shared(FILE_CHANGE);
     this.saved = new Map();
     this.handle = cx.focus_handle();
     this.scroll = ScrollHandle.new();
@@ -294,6 +298,12 @@ export default class Files extends View {
         .when(this.selected === path, el => el.bg(t.selected))
         .when(this.selected !== path, el => el.hover(s => s.bg(t.hover)))
         .on_click((_event, cx) => { cx.stop_propagation(); this.choose(row, cx, { toggle: entry.dir }); })
+        .when(!entry.dir, el => el.on_mouse_down("right", (_event, cx) => {
+          cx.stop_propagation();
+          if (!this.root || checking()) return;
+          openOverlay({ mod: "files-md-tools", kind: "popup", at: "pointer", width: 230,
+            props: { action: "menu", file: `${this.root}/${path}`, name: entry.name, root: this.root, on: this.on ?? null } });
+        }))
         .child(entry.dir ? svg(`mods/files-md-tools/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/files-md-tools/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
@@ -302,9 +312,21 @@ export default class Files extends View {
   }
 
   render(cx) {
+    if (this.target) return renderFileMenu(this, theme());
     if (!checking()) {
       this.syncPreviewPanes(cx);
       if (key() !== this.context?.key) this.refresh(cx);
+      const change = shared(FILE_CHANGE);
+      if (change && change.at !== this.lastFileChange?.at && !this.loading) {
+        this.lastFileChange = change;
+        if (change.root === this.root && change.on === this.on) {
+          const prefix = this.root + "/";
+          if (this.selected && prefix + this.selected === change.file) {
+            this.selected = change.renamed?.slice(prefix.length) ?? null;
+          }
+          this.refresh(cx);
+        }
+      }
     }
     const t = theme(), visible = this.visibleRows();
     this.revealSelection(visible);

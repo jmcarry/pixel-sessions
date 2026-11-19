@@ -13,9 +13,12 @@ import json
 import os
 import re
 import sys
+import tempfile
 
 HOME = os.path.expanduser("~")
 CACHE = os.path.join(HOME, ".cache", "herdr-history-tools", "index.json")
+CODEX_DIR = os.path.expanduser(os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex"))
+CLAUDE_DIR = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude"))
 CACHE_VERSION = 4
 TITLE_MAX = 160
 TEXT_MAX = 6000
@@ -224,7 +227,7 @@ def codex_show(path):
 
 def codex_titles():
     names = {}
-    path = os.path.join(HOME, ".codex", "session_index.jsonl")
+    path = os.path.join(CODEX_DIR, "session_index.jsonl")
     if os.path.exists(path):
         for d in jsonl(path):
             if d.get("id") and d.get("thread_name"):
@@ -290,9 +293,9 @@ def pi_show(path):
 # ---------- driver ----------
 
 def file_sources():
-    for f in glob.glob(os.path.join(HOME, ".claude", "projects", "*", "*.jsonl")):
+    for f in glob.glob(os.path.join(CLAUDE_DIR, "projects", "*", "*.jsonl")):
         yield "claude", f
-    for f in glob.glob(os.path.join(HOME, ".codex", "sessions", "*", "*", "*", "*.jsonl")):
+    for f in glob.glob(os.path.join(CODEX_DIR, "sessions", "*", "*", "*", "*.jsonl")):
         yield "codex", f
     pi_home = os.path.expanduser(os.environ.get("PI_CODING_AGENT_DIR") or os.path.join(HOME, ".pi", "agent"))
     pi_sessions = os.path.expanduser(os.environ.get("PI_CODING_AGENT_SESSION_DIR") or os.path.join(pi_home, "sessions"))
@@ -337,14 +340,22 @@ def cmd_list():
         fresh[path] = {"stamp": stamp, "session": entry}
         if entry:
             sessions.append(entry)
+    tmp = None
     try:
-        os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-        tmp = CACHE + ".tmp"
-        with open(tmp, "w") as f:
+        cache_dir = os.path.dirname(CACHE)
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=cache_dir, delete=False) as f:
+            tmp = f.name
             json.dump({"v": CACHE_VERSION, "files": fresh}, f)
         os.replace(tmp, CACHE)
     except OSError:
         pass
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
     names = codex_titles()
     for s in sessions:
         if s["agent"] == "codex" and s["id"] in names:
@@ -369,7 +380,8 @@ def cmd_show(agent, ref):
         if not m["text"]:
             continue
         if merged and m["role"] == "tool" and merged[-1]["role"] == "tool":
-            merged[-1]["text"] += "\n" + m["text"]
+            if len(merged[-1]["text"]) < TEXT_MAX:
+                merged[-1]["text"] = clip(merged[-1]["text"] + "\n" + m["text"], TEXT_MAX)
         else:
             merged.append(m)
     total = len(merged)
@@ -385,7 +397,7 @@ def main():
     else:
         print(__doc__, file=sys.stderr)
         sys.exit(2)
-    json.dump(result, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+    sys.stdout.buffer.write(json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
 if __name__ == "__main__":

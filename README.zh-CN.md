@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-一个 [Herdr 桌面版](https://herdr.dev/) 布局：像素空间头像、可区分的 Claude 吉祥物、本机会话历史，以及终端右侧可复用的 Markdown／图片预览窗格。
+一个 [Herdr 桌面版](https://herdr.dev/) 布局：像素空间头像、可区分的 Claude 吉祥物、本机与远程会话历史，以及终端右侧可复用的 Markdown／图片预览窗格。
 
 ![Pixel Sessions](preview.png)
 
@@ -14,14 +14,14 @@
 - **Clawd 图标：**39 个 Claude 吉祥物变体，用于代理侧栏、标签和窗格标题。按终端地址稳定分配，同一个代理在这些位置显示一致。
 - **Files 与 Preview：**点击任意文件，在当前终端右侧打开分屏；继续选文件会复用该标签页的预览窗格，保存后自动刷新。
 - **键盘浏览：**先点击 Files，用 ↑／↓ 选择可见行，预览跟随选中的文件；选中项有高亮并自动滚动到视野内。←／→ 导航文件夹，Enter 打开文件或展开／折叠文件夹，Esc 返回终端。
-- **History：**搜索和浏览本机 Claude Code、Codex、Pi 会话，查看转录，并在新的本机标签中 Resume。转录右侧每轮用户提问对应一个点，悬停查看提问，点击跳到该轮。
+- **History：**搜索和浏览本机及已连接主机上的 Claude Code、Codex、Pi 会话，查看转录，并在会话所属主机的新标签中 Resume。转录右侧每轮用户提问对应一个点，悬停查看提问，点击跳到该轮。
 
 状态栏保留 Herdr 原版。本项目不包含额度查询、凭证读取或 Quote/0 功能。
 
 ## 要求与限制
 
 - 已针对 Herdr 桌面版 **0.1.16** 检查；使用更新版本时请先运行 mod 检查。不适用于 Herdr TUI。
-- History 和文件预览需要 `python3`；仓库状态需要 `git`。
+- History、文件预览、重命名和删除需要在文件所属主机上安装 `python3`；仓库状态需要 `git`。
 - 图片预览目前面向 **macOS**，使用系统自带的 `sips`；图像渲染需要本机文件。远端有 Python 3 时也可以预览文本和十六进制内容。没有远端 Python 时，可通过 Herdr 读取较小的 UTF-8 文件。
 - Resume 对应代理前，需要安装 `claude`、`codex` 或 `pi` 命令。
 
@@ -48,6 +48,12 @@
 
 保留其他布局，⌘⇧L 可循环切换。如果重命名了布局，按键段也要改为 `layout:<新名称>`。
 
+## 文件操作与远程 History
+
+在 **Files** 中右键文件，可以复制完整路径、重命名或删除。本机 macOS 还可用 **Reveal in Finder** 定位文件。删除前会要求确认，本机文件移到废纸篓，远程文件执行永久删除。重命名遇到同名目标会报错。
+
+在 **History** 中，**Current space** 自动跟随当前空间的主机，也可以点 **Local** 或主机名切换。**This folder** 筛选当前主机上的工作目录，**All** 查看所选主机上的全部目录。远程主机需要已经连接 Herdr，并有 Python 3。模块以连接用户身份读取会话，也识别该主机环境中的 `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR`。**Resume** 在会话所属主机和原工作目录打开新标签。
+
 ## 使用预览
 
 打开 **Files**，点击任意文件。文件树保留，Preview 以当前标签页中的普通分屏形式打开。要用上下键继续浏览，先点击 Files。
@@ -60,13 +66,13 @@
 
 ## 数据与本地程序
 
-Files 读取选定项目，运行目录列举及只读 Git 命令，并监听本地文件。像素空间通过 `git`、`hc` 查询状态，也包括已经连接到 Herdr 的机器。History 运行 Python，读取本机代理转录，在 `~/.cache/herdr-history-tools/` 缓存索引。文件预览通过 Python 限量读取内容。图片处理还会调用 `sips`，只在 Herdr 目录中的预览缓存写入文件。只有点击 Resume 时才启动对应代理命令。
+Files 读取选定项目，运行目录列举及只读 Git 命令，并监听本地文件。像素空间通过 `git`、`hc` 查询状态，也包括已经连接到 Herdr 的机器。History 在所选主机运行 Python，读取该账号的代理转录，并在该主机的 `~/.cache/herdr-history-tools/` 缓存索引。文件预览通过 Python 限量读取内容。图片处理还会调用 `sips`，只在 Herdr 目录中的预览缓存写入文件。只有点击 Resume 时才启动对应代理命令。
 
 本项目没有自主 HTTP 请求或凭证读取，也不打包个人会话、机器地址、应用状态或预览缓存。
 
 ## 验证范围
 
-十个 mod 均通过 0.1.16 的初始原生 `herdr-app check`。图片处理使用本机 macOS 样例文件检查；Markdown 分屏、保存刷新、HEIC 和 SVG 也在应用中用演示文件验证。键盘／焦点路由、生命周期清理、解析边界情况和 Resume 参数使用模拟测试覆盖。全文件预览也用本机样例验证了原生渲染和保存刷新。真实代理 Resume 和远程文件预览尚未做端到端验证。运行 `node --test tests/preview.test.mjs` 可用生成的样例检查分流、加载和性能，见[测试基线](tests/BASELINE.md)。
+十个 mod 均通过 0.1.16 的初始原生 `herdr-app check`。图片处理使用本机 macOS 样例文件检查；Markdown 分屏、保存刷新、HEIC 和 SVG 也在应用中用演示文件验证。键盘／焦点路由、生命周期清理、解析边界情况和 Resume 参数使用模拟测试覆盖。全文件预览也用本机样例验证了原生渲染和保存刷新。真实代理 Resume 和远程文件预览尚未做端到端验证。运行 `node --test tests/*.test.mjs` 可用生成的样例检查文件操作、History 主机路由、预览加载和性能，见[测试基线](tests/BASELINE.md)。
 
 ## 来源与许可
 
