@@ -1,9 +1,10 @@
 // Modified for Pixel Sessions; pinned upstream provenance and licensing are in THIRD_PARTY_NOTICES.md.
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex, ScrollHandle } from "gpui-base";
+import { v_flex, h_flex, ScrollHandle, Input, InputState } from "gpui-base";
 import { spaces, panes, focused, exec, watchFolder, theme, window, run, checking, shared, setShared, nextCommand, openOverlay, props } from "herdr";
 import { FILE_CHANGE, initFileMenu, renderFileMenu } from "./file-menu.js";
+import { resolveDirectory } from "./browse-path.js";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -13,7 +14,7 @@ function location() {
   const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
   return { cwd: pane?.cwd || f?.cwd || terminal?.cwd || space?.folder, on, space: space?.id };
 }
-const key = () => JSON.stringify(location());
+const inFolder = (root, path) => `${root.replace(/\/+$/, "")}/${path}`;
 const PER_FOLDER = 500, TOTAL = 5000;
 
 async function directory(path, on) {
@@ -52,6 +53,15 @@ export default class Files extends View {
     this.selected = null;
     this.selectionGeneration = 0;
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
+    if (target?.browse) {
+      this.browser = { cwd: null, on: target.on ?? null, space: target.space, base: target.base ?? null };
+      this.pathInput = InputState.new({ value: target.base ?? "", placeholder: "/path/to/folder" });
+      this.pathInput.on("submit", (_event, cx) => this.goToPath(cx));
+      if (!checking()) cx.timer.after(80, () => {
+        this.pathInput.focus();
+        this.pathInput.set_selected_range({ start: 0, end: this.pathInput.value().length });
+      });
+    }
     if (checking()) return;
     this.refresh(cx);
     cx.timer.every(10000, cx => this.refresh(cx));
@@ -82,16 +92,50 @@ export default class Files extends View {
   }
 
   close() {
+    this.closed = true;
     this.watchRequest?.cancel();
   }
 
+  location() {
+    if (!this.browser) return location();
+    const { cwd, on, space } = this.browser;
+    return { cwd, on, space };
+  }
+
+  goToPath(cx) {
+    if (checking() || !this.browser || this.resolvingPath) return;
+    const path = this.pathInput.value();
+    const { base, on } = this.browser;
+    this.resolvingPath = true;
+    this.pathError = null;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        const cwd = await resolveDirectory(path, base, on);
+        if (this.closed) return;
+        this.browser.cwd = this.browser.base = cwd;
+        // Keep edits typed while a remote lookup is running.
+        if (this.pathInput.value() === path) {
+          this.pathInput.set_value(cwd);
+          this.handle.focus();
+        }
+        this.refresh(cx);
+      } catch (error) {
+        if (!this.closed) this.pathError = error?.message ?? String(error);
+      } finally {
+        this.resolvingPath = false;
+        if (!this.closed) cx.notify();
+      }
+    });
+  }
+
   current(context) {
-    return this.context === context && key() === context.key;
+    return this.context === context && JSON.stringify(this.location()) === context.key;
   }
 
   async loadFolder(path, context) {
     const { on, cwd: root } = context;
-    const entries = await directory(path ? `${root}/${path}` : root, on);
+    const entries = await directory(path ? inFolder(root, path) : root, on);
     if (!this.current(context) || (path && !this.folders.has(path))) return;
     const used = [...this.entries.entries()].filter(([p]) => p !== path).reduce((n, [, e]) => n + e.length, 0);
     this.entries.set(path, entries.slice(0, Math.max(0, Math.min(PER_FOLDER, TOTAL - used))).sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name)));
@@ -99,7 +143,8 @@ export default class Files extends View {
   }
 
   refresh(cx) {
-    const { cwd, on } = location(), next = key();
+    const target = this.location();
+    const { cwd, on } = target, next = JSON.stringify(target);
     if (next !== this.context?.key) {
       if (this.context) this.saved.set(this.context.key, { folders: this.folders, selected: this.selected, selectedIndex: this.selectedIndex });
       this.watchRequest?.cancel(); this.watchRequest = null;
@@ -194,7 +239,8 @@ export default class Files extends View {
     if (!tab) return;
     const selectionKey = `md-preview-tools.selection:${tab}`;
     const previous = shared(selectionKey);
-    setShared(selectionKey, { file: `${this.root}/${path}`, on: this.on ?? null, version: (previous?.version ?? 0) + 1 });
+    const file = inFolder(this.root, path);
+    setShared(selectionKey, { file, on: this.on ?? null, version: (previous?.version ?? 0) + 1 });
     const registry = this.syncPreviewPanes(cx);
     const entry = registry[tab];
     const existing = all.find(p => p.tab === tab && p.mod === "md-preview-tools" && p.pane === entry?.pane);
@@ -209,7 +255,7 @@ export default class Files extends View {
     setShared("md-preview-tools.panes", { ...registry, [tab]: { before: mine.map(p => p.pane), requestedAt: Date.now() } });
     this.previewFocus = { tab, context: this.context };
     run("pane.split", { pane: source.pane, direction: "right", mod: "md-preview-tools",
-      props: { file: `${this.root}/${path}`, on: this.on ?? null, tab, selectionKey } });
+      props: { file, on: this.on ?? null, tab, selectionKey } });
   }
 
   visibleRows(prefix = "", depth = 0, out = []) {
@@ -295,13 +341,13 @@ export default class Files extends View {
     cx.stop_propagation();
     if (!this.root || checking()) return;
     openOverlay({ mod: "files-md-tools", kind: "popup", at: "pointer", width: 230, height: 180,
-      props: { action: "menu", file: `${this.root}/${path}`, name: entry.name, directory: Boolean(entry.dir),
+      props: { action: "menu", file: inFolder(this.root, path), name: entry.name, directory: Boolean(entry.dir),
         root: this.root, on: this.on ?? null } });
   }
 
   rows(visible, t) {
     return visible.map(row => {
-      const { entry, path, depth } = row, open = this.folders.has(path), mark = this.marks[`${this.root}/${path}`];
+      const { entry, path, depth } = row, open = this.folders.has(path), mark = this.marks[inFolder(this.root, path)];
       return h_flex().id(`file-${path}`).h(28).flex_none().pl(8 + depth * 18).pr(8).gap(7).items_center().rounded(7).cursor_pointer()
         .when(this.selected === path, el => el.bg(t.selected))
         .when(this.selected !== path, el => el.hover(s => s.bg(t.hover)))
@@ -321,12 +367,12 @@ export default class Files extends View {
     if (this.target) return renderFileMenu(this, theme());
     if (!checking()) {
       this.syncPreviewPanes(cx);
-      if (key() !== this.context?.key) this.refresh(cx);
+      if (JSON.stringify(this.location()) !== this.context?.key) this.refresh(cx);
       const change = shared(FILE_CHANGE);
       if (change && change.at !== this.lastFileChange?.at && !this.loading) {
         this.lastFileChange = change;
         if (change.root === this.root && change.on === this.on) {
-          const prefix = this.root + "/";
+          const prefix = inFolder(this.root, "");
           if (this.selected && prefix + this.selected === change.file) {
             this.selected = change.renamed?.slice(prefix.length) ?? null;
           }
@@ -341,9 +387,16 @@ export default class Files extends View {
       .size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().font_semibold().child("Files"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(this.root?.split(/[\\/]/).pop() ?? "")))
+        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim)
+          .child(this.browser ? this.browser.on ?? "Local" : this.root?.split(/[\\/]/).pop() ?? "")))
+      .when(Boolean(this.browser), el => el.child(h_flex().px(10).py(8).gap(6).items_center()
+        .child(div().id("files-path-input").flex_1().min_w(0).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .child(Input.new(this.pathInput).h(32).px(8).rounded(6).border_1().border_color(t.border).bg(t.background).text_color(t.foreground)))
+        .child(div().id("files-path-open").flex_none().px(10).py(6).rounded(6).cursor_pointer().bg(t.raised)
+          .hover(s => s.bg(t.hover)).on_click((_e, cx) => this.goToPath(cx)).child(this.resolvingPath ? "Opening…" : "Open"))))
+      .when(Boolean(this.pathError), el => el.child(div().px(11).py(4).text_size(12).text_color(t.ansi1).child(this.pathError)))
       .child(v_flex().id("files-tree").flex_1().min_h(0).overflow_y_scrollbar().track_scroll(this.scroll).p(6).children(this.rows(visible, t))
-        .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
+        .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : this.browser ? "Enter a folder path to browse." : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total"))));
   }
 }

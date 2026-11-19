@@ -2,7 +2,7 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-One [Herdr desktop](https://herdr.dev/) layout for pixel space avatars, recognisable Claude agents, local and remote session history, and a reusable file preview beside your terminal.
+One [Herdr desktop](https://herdr.dev/) layout for pixel space avatars, recognisable Claude agents, local and remote session history, and independent Files panes that open any directory by path, and a reusable file preview beside your terminal.
 
 ![Pixel Sessions](preview.png)
 
@@ -13,6 +13,7 @@ Native Herdr demos use the published layout geometry and synthetic spaces, agent
 - **Pixel spaces:** 15 coloured sprites, a matching space picker, and a bell for agents that need attention. Option-click a space sprite to change it.
 - **Clawd icons:** 39 mascot variants for Claude agents in the sidebar, tabs, and pane headers. The terminal address determines the variant, so it stays consistent across those views.
 - **Files + Preview:** click a file to open a pane to the terminal's right. Further selections reuse that tab's preview. Saving a file refreshes its preview.
+- **Open Files by Path:** press **⌘⌥O**, or right-click a terminal and choose **Open Files by Path…**. Enter a directory to browse it in a new right-hand pane.
 - **Keyboard browsing:** click Files, then use ↑/↓ to move through visible rows while Preview follows the selected file. The selection stays highlighted and scrolls into view. ←/→ navigates folders; Enter opens a file or toggles a folder; Esc returns to the terminal.
 - **History:** browse and search Claude Code, Codex, and Pi sessions on this Mac or a connected machine, inspect transcripts, and resume in a new tab on the machine that owns the session. Transcript dots show each user turn: hover for its prompt and click to jump there.
 
@@ -39,14 +40,18 @@ For a manual installation:
 
 1. Clone this repository. Inspect `RECIPE.md` and the files before installing trusted mod code.
 2. Copy `layouts/pixel-sessions.json`, each folder under `mods/`, and `pixel-icons/` into the matching locations under `~/.config/herdr-app/`. **Stop if any destination already exists:** reuse only an identical dependency, or rename the incoming dependency and all of its references. Do not replace a shipped or personal mod.
-3. Merge the layout-specific section from `keys.json` into your own key file. It maps ⌘P to the pixel picker and ⌘⌥W to closing the focused pane only in this layout; global bindings stay unchanged. Merge the two icon fields from `programs.json` if you want the supplied pixel program icons, preserving any existing program settings.
-4. Check all ten copied mods with `herdr-app check ~/.config/herdr-app/mods/<name>`, then switch layouts:
+3. Merge the layout-specific section from `keys.json` into your own key file. It maps ⌘P to the pixel picker, ⌘⌥O to a new Files pane and ⌘⌥W to closing the focused pane only in this layout; global bindings stay unchanged. Merge the two icon fields from `programs.json` if you want the supplied pixel program icons, preserving any existing program settings.
+4. Check all eleven copied mods with `herdr-app check ~/.config/herdr-app/mods/<name>`, then switch layouts:
 
    ```sh
    herdr-app do layout.switch '{"name":"pixel-sessions"}'
    ```
 
 Keep your other layouts. ⌘⇧L cycles through them. If you renamed this layout, update its key section to `layout:<your-name>` too.
+
+## Open Files by Path
+
+Press **⌘⌥O** or right-click a terminal and select **Open Files by Path…**. Enter an absolute path, a path relative to the terminal's directory, or `~`, then press **Enter** or **Open**. After opening a directory, relative paths start from that directory. The path stays pinned in its own split while you work elsewhere. It uses the same tree, previews, and file actions as the Files sidebar. On remote spaces the path is resolved on that machine using Python 3. **Shift+right-click** opens the menu when an app inside the terminal handles right-clicks.
 
 ## File actions and remote History
 
@@ -72,7 +77,7 @@ There are no autonomous HTTP requests or credential reads in this package. It sh
 
 ## Validation
 
-All ten mods pass the initial native `herdr-app check` on 0.1.16. Image preparation was exercised with local macOS sample files; Markdown split previews, save refresh, HEIC and SVG rendering were also checked in the app with demonstration files. Keyboard/focus routing, lifecycle cleanup, parser edge cases, and Resume arguments are covered by synthetic tests. The generic preview passed native rendering and save-refresh checks with local test files. Real-agent Resume and remote file preview have not been tested end to end. Run `node --test tests/*.test.mjs` to check file operations, History routing, preview loading, and performance with generated fixtures. See [the test baseline](tests/BASELINE.md).
+All eleven mods pass the initial native `herdr-app check` on 0.1.16. Image preparation was exercised with local macOS sample files; Markdown split previews, save refresh, HEIC and SVG rendering were also checked in the app with demonstration files. Keyboard/focus routing, lifecycle cleanup, parser edge cases, and Resume arguments are covered by synthetic tests. The generic preview passed native rendering and save-refresh checks with local test files. Real-agent Resume and remote file preview have not been tested end to end. Run `node --test tests/*.test.mjs` to check file operations, History routing, preview loading, and performance with generated fixtures. See [the test baseline](tests/BASELINE.md).
 
 ## Credits and licensing
 

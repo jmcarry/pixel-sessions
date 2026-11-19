@@ -1,6 +1,7 @@
 {
   "layout:pixel-sessions": {
     "cmd-p": "mod.open:pixel-picker",
-    "cmd-alt-w": "pane.close"
+    "cmd-alt-w": "pane.close",
+    "cmd-alt-o": "tabs-tools.open-files-path"
   }
 }

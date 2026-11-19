@@ -1,6 +1,6 @@
 # Pixel Sessions
 
-A native Herdr desktop workspace with colourful pixel space avatars, distinct Claude mascots, Files / Changes / History tabs, and a reusable preview pane beside the terminal. Browse files with the keyboard, inspect a past conversation, then resume it in a new tab on its original host. The layout inherits the person's theme rather than imposing one.
+Open Files by Path with ⌘⌥O or the terminal right-click menu. Enter a local or remote folder and browse it in an independent right-hand pane with the same file actions, keyboard navigation and preview as the Files sidebar. Pixel Sessions also adds pixel space avatars, Claude mascots and session history that resumes conversations on their original host.
 
 ![Pixel Sessions](preview.png)
 
@@ -17,6 +17,8 @@ A native Herdr desktop workspace with colourful pixel space avatars, distinct Cl
 ## How it behaves
 
 **Agents and spaces.** `blocked` and unread `done` agents appear in the header's bell count. Blocked takes priority; clicking the bell focuses the most urgent agent. Working uses a native spinner and idle is quiet. The same terminal keeps its mascot across status changes. A new space receives a least-used sprite and keeps it by space id. Option-click changes that sprite without changing the selected space. Plain click, right-click menus, drag order, worktree grouping and machine controls retain Herdr's behaviour. The search button and this layout's ⌘P open the pixel picker; arrows and Enter select a tab and Esc closes it.
+
+**Files by Path.** The layout shortcut asks the tab bar to split the focused pane. The terminal context menu splits the clicked pane. Both open `files-md-tools` with `{ browse: true, base, on, space }`. Focus the path field at startup. Enter or Open validates the directory on the owning machine and pins the resulting root to that Files pane. The regular sidebar continues to follow the terminal. Close the split with ⌘⌥W. Use Shift+right-click when the terminal program captures the mouse.
 
 **Files and preview.** Selecting any file creates a preview to the right of an explicit terminal pane. The file tree remains visible. Right-click a file for Copy Path, Rename, and Delete. Local macOS adds Reveal in Finder and moves deleted files to Trash. Remote delete requires explicit confirmation and removes only the selected file. Rename is exclusive and refuses existing targets. Further selections in that tab update the existing managed preview, including fast successive selections while the host is applying the first split. A separately opened manual preview remains independent. Preview shows the filename/folder and, for images, the original dimensions; images fit with their aspect ratio preserved. Markdown and SVG have Preview / Source controls. Text and code use a read-only editor. Other binary formats show the file size and a hex/ASCII sample. Relative file links stay in Preview. External links open only on click.
 
@@ -40,14 +42,15 @@ With two or more user turns, the transcript has a right-edge dot rail. Hover a d
 | `pixel-picker` | Current picker plus the same sprite drawings; opened by the header or layout-specific key |
 | `pixel-chrome` | Sidebar header with waiting bell, search and collapse controls |
 | `agents-clawd` | Current agent list and subagents with address-based Claude mascots |
-| `pane-clawd` | Current pane header with matching mascots and a human-readable Preview title |
+| `pane-clawd` | Current pane header with matching mascots and human-readable Files and Preview titles |
 | `clawd-icons` | 39 SVG mascot assets and an empty `place: none` mod |
-| `tabs-tools` | Current tabs plus the History panel button, mascot icons and remembered panels |
-| `files-md-tools` | Lazy Files tree, selected-row state, keyboard focus, per-tab preview routing, file context menu, and `file_actions.py` |
+| `tabs-tools` | Current tabs plus the History panel button, mascot icons, remembered panels and Open Files by Path shortcut |
+| `terminal-menu-tools` | Terminal context menu with Open Files by Path and the standard pane actions |
+| `files-md-tools` | Path entry, lazy Files tree, selected-row state, keyboard focus, per-tab preview routing, file context menu, and `file_actions.py` |
 | `md-preview-tools` | Markdown, images, read-only text and hex; `file_preview.py` reads bounded file prefixes; `images.py` prepares bounded image previews |
 | `history-tools` | History UI and `history.py` per-machine transcript index and reader |
 
-The layout also uses shipped `workspace-chrome` for its footer, `workspace-status`, `changes`, and Herdr's shared menus/icons. Those are supplied by Herdr and are not overwritten. `keys.json` only adds `layout:pixel-sessions` / `cmd-p` and `cmd-alt-w`; `programs.json` contains only two optional icon overrides.
+The layout also uses shipped `workspace-chrome` for its footer, `workspace-status`, `changes`, and other Herdr menus/icons. Those are supplied by Herdr and are not overwritten. `keys.json` only adds `layout:pixel-sessions` / `cmd-p`, `cmd-alt-w` and `cmd-alt-o`; `programs.json` contains only two optional icon overrides.
 
 Preview props are `{ file, on?, tab?, selectionKey? }`. The managed file selection is shared by tab, while a standalone preview can use `{ file, on }`. Source and image generation are bounded and asynchronous. Herdr APIs include `spaces`, `panes`, `focused`, `agents`, `machines`, `shared` / `setShared`, `run`, `nextCommand`, `exec`, `hc`, `readTextFile`, `watchFolder`, `theme`, `settings`, `props`, and `checking`. GPUI provides focus handles, `ScrollHandle`, native controls, Markdown, images and editors.
 
@@ -68,10 +71,10 @@ Processes: `git` and directory-listing commands for files/repositories, `hc` for
 
 ## Done when
 
-1. All ten `herdr-app check` calls pass against the target Herdr version; `herdr-app status` has no mod/config errors.
+1. All eleven `herdr-app check` calls pass against the target Herdr version; `herdr-app status` has no mod/config errors.
 2. The sidebar shows sprites, Option-click cycles one, and ⌘P opens the matching picker without replacing the global key.
 3. A Claude terminal has the same mascot in sidebar, tab and pane header; a shell keeps its normal icon.
-4. Clicking any file opens a right-hand split, later selections reuse it, and Files stays visible. Saving refreshes it.
+4. Clicking any file opens a right-hand split, later selections reuse it, and Files stays visible. Saving refreshes it. ⌘⌥O and the terminal menu each open a separate Files pane with a path field. Valid local and remote paths list their directories, and invalid paths leave the last listing in place.
 5. Repeated ↑/↓ in Files changes the selected file and preview without focus leaving Files or extra panes appearing. Folder navigation works and the tree remains visible for ordinary files.
 6. A large local image produces a bounded preview without changing the source; HEIC / TIFF and native PNG / SVG samples render. Failed conversions show a bounded text or hex fallback and explain why the image is unavailable. Closing cancels watches and pending selections.
 7. History lists conversations from the selected machine, transcript dots jump to their turns, and Resume opens a new tab on the original host with the correct agent arguments and directory.

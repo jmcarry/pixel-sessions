@@ -66,6 +66,7 @@ export default class Pane extends View {
     const p = this.me();
     if (!p) return div();
     const name = p.mod === "md-preview-tools" ? "Preview"
+      : p.mod === "files-md-tools" ? "Files"
       : ((p.program?.agent || p.program?.shell) && p.program.name) || p.title || p.program?.name || "shell";
     const pic = icon(p.program, 14, t.dim, p.terminal);
     const st = p.status;

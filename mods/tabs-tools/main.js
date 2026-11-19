@@ -1,7 +1,7 @@
 // Modified for Pixel Sessions; pinned upstream provenance and licensing are in THIRD_PARTY_NOTICES.md.
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
+import { spaces, panes, focused, run, openOverlay, theme, window, shared, layout, settings, checking, nextCommand } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -38,12 +38,29 @@ function programIcon(program, address, size, color) {
 }
 
 export default class Tabs extends View {
-  init() {
+  init(_props, cx) {
     this.pressed = null;
     this.scroll = ScrollHandle.new();
     try { this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}"); } catch { this.panels = {}; }
     if (!this.panels || typeof this.panels !== "object" || Array.isArray(this.panels)) this.panels = {};
     this.swipe = { acc: 0, steps: 0, at: 0, last: 0 };
+    if (!checking()) cx.spawn(async () => {
+      for (;;) {
+        if (await nextCommand() === "open-files-path") this.openFilesPath();
+      }
+    });
+  }
+
+  openFilesPath() {
+    const focus = focused();
+    const space = spaces().find(s => s.id === focus?.space);
+    const pane = panes().find(p => p.pane === focus?.pane);
+    if (!pane) return;
+    run("pane.split", {
+      pane: pane.pane, direction: "right", mod: "files-md-tools",
+      props: { browse: true, base: pane.cwd ?? focus.cwd ?? space?.folder ?? null,
+        on: space?.machine ?? null, space: space?.id ?? null },
+    });
   }
 
   // One tab per wheel notch. A touchpad or smooth-scrolling mouse sends many
