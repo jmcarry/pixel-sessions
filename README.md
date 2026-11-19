@@ -13,7 +13,7 @@ Native Herdr demos use the published layout geometry and synthetic spaces, agent
 - **Pixel spaces:** 15 coloured sprites, a matching space picker, and a bell for agents that need attention. Option-click a space sprite to change it.
 - **Clawd icons:** 39 mascot variants for Claude agents in the sidebar, tabs, and pane headers. The terminal address determines the variant, so it stays consistent across those views.
 - **Files + Preview:** click a file to open a pane to the terminal's right. Further selections reuse that tab's preview. Saving a file refreshes its preview.
-- Press **⌘⌥O**, or right-click a terminal and choose **New Files…**. Enter a directory to browse it in a new right-hand pane.
+- Press **⌘⌥O**, or right-click a terminal and choose **New Files**. Enter a directory to browse it in a new right-hand pane.
 - **Keyboard browsing:** click Files, then use ↑/↓ to move through visible rows while Preview follows the selected file. The selection stays highlighted and scrolls into view. ←/→ navigates folders; Enter opens a file or toggles a folder; Esc returns to the terminal.
 - **History:** browse and search Claude Code, Codex, and Pi sessions on this Mac or a connected machine, inspect transcripts, and resume in a new tab on the machine that owns the session. Transcript dots show each user turn: hover for its prompt and click to jump there.
 
@@ -51,7 +51,7 @@ Keep your other layouts. ⌘⇧L cycles through them. If you renamed this layout
 
 ## New Files panes
 
-Press **⌘⌥O** or right-click a terminal and select **New Files…**. Enter an absolute path, a path relative to the terminal's directory, or `~`, then press **Enter** or **Open**. After opening a directory, relative paths start from that directory. The path stays pinned in its own split while you work elsewhere. It uses the same tree, previews, and file actions as the Files sidebar. On remote spaces the path is resolved on that machine using Python 3. **Shift+right-click** opens the menu when an app inside the terminal handles right-clicks.
+Press **⌘⌥O** or right-click a terminal and select **New Files**. Enter an absolute path, a path relative to the terminal's directory, or `~`, then press **Enter** or **Open**. After opening a directory, relative paths start from that directory. The path stays pinned in its own split while you work elsewhere. It uses the same tree, previews, and file actions as the Files sidebar. On remote spaces the path is resolved on that machine using Python 3. **Shift+right-click** opens the menu when an app inside the terminal handles right-clicks.
 
 ## File actions and remote History
 

@@ -12,7 +12,7 @@ function items(target = {}) {
   if (pane) {
     const space = spaces().find(s => s.tabs?.some(tab => tab.id === pane.tab));
     options.push(
-      ["New Files…", "folder", "pane.split", {
+      ["New Files", "folder", "pane.split", {
         pane: pane.pane, direction: "right", mod: "files-md-tools",
         props: { browse: true, base: pane.cwd ?? space?.folder ?? null,
           on: space?.machine ?? null, space: space?.id ?? null },
