@@ -1,6 +1,6 @@
 # Pixel Sessions
 
-Open Files by Path with ⌘⌥O or the terminal right-click menu. Enter a local or remote folder and browse it in an independent right-hand pane with the same file actions, keyboard navigation and preview as the Files sidebar. Pixel Sessions also adds pixel space avatars, Claude mascots and session history that resumes conversations on their original host.
+Press ⌘⌥O or choose New Files… from the terminal right-click menu. Enter a local or remote folder and browse it in an independent right-hand pane with the same file actions, keyboard navigation and preview as the Files sidebar. Pixel Sessions also adds pixel space avatars, Claude mascots and session history that resumes conversations on their original host.
 
 ![Pixel Sessions](preview.png)
 
@@ -44,8 +44,8 @@ With two or more user turns, the transcript has a right-edge dot rail. Hover a d
 | `agents-clawd` | Current agent list and subagents with address-based Claude mascots |
 | `pane-clawd` | Current pane header with matching mascots and human-readable Files and Preview titles |
 | `clawd-icons` | 39 SVG mascot assets and an empty `place: none` mod |
-| `tabs-tools` | Current tabs plus the History panel button, mascot icons, remembered panels and Open Files by Path shortcut |
-| `terminal-menu-tools` | Terminal context menu with Open Files by Path and the standard pane actions |
+| `tabs-tools` | Current tabs plus the History panel button, mascot icons, remembered panels and the New Files shortcut |
+| `terminal-menu-tools` | Terminal context menu with New Files… and the standard pane actions |
 | `files-md-tools` | Path entry, lazy Files tree, selected-row state, keyboard focus, per-tab preview routing, file context menu, and `file_actions.py` |
 | `md-preview-tools` | Markdown, images, read-only text and hex; `file_preview.py` reads bounded file prefixes; `images.py` prepares bounded image previews |
 | `history-tools` | History UI and `history.py` per-machine transcript index and reader |

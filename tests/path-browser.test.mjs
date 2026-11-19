@@ -49,7 +49,7 @@ test("shortcut splits the focused pane, terminal menu splits the clicked pane", 
   assert.equal(calls[0][1].props.on, null);
   const menu = evalMod("terminal-menu-tools", "main.js", "items", { panes, spaces, terminals: () => [] });
   const rows = menu({ pane: "remote-pane", terminal: "term" });
-  assert.equal(rows[0][0], "Open Files by Path…");
+  assert.equal(rows[0][0], "New Files…");
   assert.equal(rows[0][3].pane, "remote-pane");
   assert.equal(rows[0][3].mod, "files-md-tools");
   assert.equal(rows[0][3].props.on, "host");
