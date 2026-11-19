@@ -50,9 +50,9 @@ Keep your other layouts. ⌘⇧L cycles through them. If you renamed this layout
 
 ## File actions and remote History
 
-Right-click a file in **Files** to copy its full path, rename it, or delete it. On this Mac, **Reveal in Finder** selects the file and **Delete** moves it to Trash after confirmation. Remote delete permanently removes the selected file after confirmation. Rename refuses to replace an existing entry. Finder is available for local macOS files.
+Right-click a file or click its **⋯** in **Files** to copy its full path, rename it, or delete it. On this Mac, **Reveal in Finder** selects the file and **Delete** moves it to Trash after confirmation. Remote delete permanently removes the selected file after confirmation. Rename refuses to replace an existing entry. Folders offer Copy Path and local Finder reveal.
 
-In **History**, **Current space** follows the host of the active space. Choose **Local** or a machine name to browse it directly. **This folder** uses the active folder on that host, and **All** shows its sessions across folders. Use an existing Herdr connection with Python 3 available on the remote host. The helper reads transcripts as the connected OS user, using `CODEX_HOME` and `CLAUDE_CONFIG_DIR` when set. **Resume** sends the agent command to the same machine and uses the recorded working directory.
+In **History**, **Current space** follows the host of the active space. Choose **Local** or a machine name to show its sessions across all folders. **This folder** uses the active folder on that host, and **All** shows its sessions across folders. Use an existing Herdr connection with Python 3 available on the remote host. The helper reads transcripts as the connected OS user, using `CODEX_HOME` and `CLAUDE_CONFIG_DIR` when set. **Resume** sends the agent command to the same machine and uses the recorded working directory.
 
 ## Using Preview
 

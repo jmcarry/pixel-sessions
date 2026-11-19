@@ -291,6 +291,14 @@ export default class Files extends View {
     cx.stop_propagation(); cx.notify();
   }
 
+  openFileMenu(path, entry, cx) {
+    cx.stop_propagation();
+    if (!this.root || checking()) return;
+    openOverlay({ mod: "files-md-tools", kind: "popup", at: "pointer", width: 230, height: 180,
+      props: { action: "menu", file: `${this.root}/${path}`, name: entry.name, directory: Boolean(entry.dir),
+        root: this.root, on: this.on ?? null } });
+  }
+
   rows(visible, t) {
     return visible.map(row => {
       const { entry, path, depth } = row, open = this.folders.has(path), mark = this.marks[`${this.root}/${path}`];
@@ -298,16 +306,14 @@ export default class Files extends View {
         .when(this.selected === path, el => el.bg(t.selected))
         .when(this.selected !== path, el => el.hover(s => s.bg(t.hover)))
         .on_click((_event, cx) => { cx.stop_propagation(); this.choose(row, cx, { toggle: entry.dir }); })
-        .when(!entry.dir, el => el.on_mouse_down("right", (_event, cx) => {
-          cx.stop_propagation();
-          if (!this.root || checking()) return;
-          openOverlay({ mod: "files-md-tools", kind: "popup", at: "pointer", width: 230,
-            props: { action: "menu", file: `${this.root}/${path}`, name: entry.name, root: this.root, on: this.on ?? null } });
-        }))
+        .on_mouse_down("right", (_event, cx) => this.openFileMenu(path, entry, cx))
         .child(entry.dir ? svg(`mods/files-md-tools/chevron-${open ? "down" : "right"}.svg`).size(12).flex_none().text_color(t.dim) : div().w(12).flex_none())
         .child(svg(`mods/files-md-tools/${entry.dir ? "folder" : "file"}.svg`).size(14).flex_none().text_color(t.muted))
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
-        .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark)));
+        .when(Boolean(mark), el => el.child(div().text_size(11).text_color(mark === "A" ? t.ansi2 : mark === "D" || mark === "U" ? t.ansi1 : t.blocked).child(mark)))
+        .child(div().id(`actions-${path}`).flex_none().px(7).rounded(4)
+          .text_color(t.dim).hover(s => s.bg(t.selected).text_color(t.foreground)).tooltip("Actions")
+          .on_click((_event, cx) => this.openFileMenu(path, entry, cx)).child("⋯"));
     });
   }
 

@@ -116,6 +116,14 @@ export default class History extends View {
     });
   }
 
+  chooseHost(machine, cx) {
+    this.hostChoice = machine;
+    this.scope = machine === undefined ? "here" : "all";
+    this.agent = "all";
+    this.syncRoot(cx);
+    cx.notify();
+  }
+
   show(session, cx) {
     if (checking()) return;
     this.open = session; this.transcript = null; this.loadError = null; this.start = 0; this.top = 0; this.drawnTop = Infinity;
@@ -190,9 +198,9 @@ export default class History extends View {
     const present = Object.keys(AGENTS).filter((a) => counts[a]);
     const hostNames = [...new Set([this.machine, ...machines().map(m => m.name)].filter(Boolean))];
     const host = (id, label, machine) => this.chip(id, label, this.hostChoice === machine, t,
-      (_e, cx) => { this.hostChoice = machine; this.agent = "all"; this.syncRoot(cx); cx.notify(); });
+      (_e, cx) => this.chooseHost(machine, cx));
     const empty = this.loading && !this.sessions.length ? "Loading sessions…"
-      : this.query ? "No matching sessions" : here ? "No sessions in this folder" : "No sessions";
+      : this.query ? "No matching sessions" : here ? "No sessions in this folder. Choose All to browse this host." : "No sessions";
     return v_flex().size_full().min_h(0)
       .child(this.header(t, [
         div().font_semibold().child("History"),

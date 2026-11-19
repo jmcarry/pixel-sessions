@@ -80,8 +80,9 @@ export function renderFileMenu(view, t) {
         cx.write_to_clipboard(target.file);
         closeOverlay(target.overlay);
       }))
-      .child(button("file-rename", "Rename…", () => actionDialog(target, "rename")))
-      .child(button("file-delete", "Delete…", () => actionDialog(target, "delete")))
+      .when(!target.directory, el => el
+        .child(button("file-rename", "Rename…", () => actionDialog(target, "rename")))
+        .child(button("file-delete", "Delete…", () => actionDialog(target, "delete"))))
       .when(Boolean(view.error), error);
   }
   const rename = target.action === "rename";

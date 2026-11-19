@@ -97,19 +97,30 @@ test("History ignores old host responses and resumes sessions on the owning mach
   await new Promise(setImmediate);
   assert.equal(args.find(call => call.command === "git").options.on, "example-host");
   assert.deepEqual([...args.find(call => call.command === "python3").argv], ["-c", "helper", "list"]);
-  view.hostChoice = null;
-  view.syncRoot(cx);
+  view.chooseHost(null, cx);
+  assert.equal(view.scope, "all");
   waits.get(null)({ code: 0, stdout: '[{"agent":"codex","id":"local","cwd":"/same"}]' });
   waits.get("example-host")({ code: 0, stdout: '[{"agent":"claude","id":"remote"}]' });
   await Promise.all(tasks);
   assert.equal(view.sessions[0].id, "local");
+  view.chooseHost(undefined, cx);
+  assert.equal(view.scope, "here");
+  await new Promise(setImmediate);
+  waits.get("example-host")({ code: 0, stdout: '[{"agent":"claude","id":"remote","cwd":"/elsewhere"}]' });
+  await Promise.all(tasks);
+  // A host selected by name shows all its sessions, even in an active space
+  // whose project directory differs from the recorded session.
+  view.query = "";
+  assert.equal(view.visible().length, 0);
+  view.chooseHost("example-host", cx);
+  assert.equal(view.visible().length, 1);
   const remote = { agent: "claude", id: "remote", machine: "example-host", cwd: "/same", file: "/fixture" };
   view.show(remote, cx);
   await tasks.at(-1);
   assert.equal(args.at(-1).options.on, "example-host");
   assert.equal(view.transcript.messages[0].text, "remote");
   view.resume(remote);
-  view.resume(view.sessions[0]);
+  view.resume({ agent: "codex", id: "local", machine: null, cwd: "/same" });
   view.resume({ ...remote, machine: "other-host" });
   assert.equal(calls[0].space, "remote-space");
   assert.equal(calls[1].space, "local-space");
