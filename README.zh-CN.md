@@ -15,7 +15,7 @@
 - **Files 与 Preview：**点击任意文件，在当前终端右侧打开分屏；继续选文件会复用该标签页的预览窗格，保存后自动刷新。
 - **按路径打开 Files：**按 **⌘⌥O**，或右键终端选 **New Files**，再输入目录路径。
 - **键盘浏览：**先点击 Files，用 ↑／↓ 选择可见行，预览跟随选中的文件；选中项有高亮并自动滚动到视野内。←／→ 导航文件夹，Enter 打开文件或展开／折叠文件夹，Esc 返回终端。
-- **History：**搜索和浏览本机及已连接主机上的 Claude Code、Codex、Pi 会话，查看转录，并在会话所属主机的新标签中 Resume。转录右侧每轮用户提问对应一个点，悬停查看提问，点击跳到该轮。
+- **History：**搜索和浏览本机及已连接主机上的 Claude Code、Codex、Antigravity CLI、Pi 会话，查看转录，并在会话所属主机的新标签中 Resume。转录右侧每轮用户提问对应一个点，悬停查看提问，点击跳到该轮。
 
 状态栏保留 Herdr 原版。本项目不包含额度查询、凭证读取或 Quote/0 功能。
 
@@ -24,7 +24,7 @@
 - 已针对 Herdr 桌面版 **0.1.16** 检查；使用更新版本时请先运行 mod 检查。不适用于 Herdr TUI。
 - History、文件预览、重命名和删除需要在文件所属主机上安装 `python3`；仓库状态需要 `git`。
 - 图片预览目前面向 **macOS**，使用系统自带的 `sips`；图像渲染需要本机文件。远端有 Python 3 时也可以预览文本和十六进制内容。没有远端 Python 时，可通过 Herdr 读取较小的 UTF-8 文件。
-- Resume 对应代理前，需要安装 `claude`、`codex` 或 `pi` 命令。
+- Resume 对应代理前，需要安装 `claude`、`codex`、`agy` 或 `pi` 命令。
 
 已用样例检查 JPG、PNG、SVG、GIF、BMP、TIFF、HEIC、HEIF、AVIF、ICNS、JP2、PSD、WebP。GIF 显示静态帧，其他 ImageIO／RAW 格式按系统支持尽力处理。
 
@@ -57,7 +57,7 @@
 
 在 **Files** 中右键文件或点该行的 **⋯**，可以复制完整路径、重命名或删除。本机 macOS 还可用 **Reveal in Finder** 定位文件。删除前会要求确认，本机文件移到废纸篓，远程文件执行永久删除。重命名遇到同名目标会报错。文件夹也可复制路径，本机文件夹还可在 Finder 中定位。
 
-在 **History** 中，**Current space** 自动跟随当前空间的主机，也可以点 **Local** 或主机名，直接看到所选主机的全部目录。**This folder** 筛选当前主机上的工作目录，**All** 查看所选主机上的全部目录。远程主机需要已经连接 Herdr，并有 Python 3。模块以连接用户身份读取会话，也识别该主机环境中的 `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR`。**Resume** 在会话所属主机和原工作目录打开新标签。
+在 **History** 中，**Current space** 自动跟随当前空间的主机，也可以点 **Local** 或主机名，直接看到所选主机的全部目录。**This folder** 筛选当前主机上的工作目录，**All** 查看所选主机上的全部目录。远程主机需要已经连接 Herdr，并有 Python 3。模块以连接用户身份读取会话，也识别该主机环境中的 `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR`。模块也自动发现 `~/.claude-profiles/*/projects` 中的 Claude 会话和 `~/.codex-*/sessions` 中的独立 Codex 会话，并以只读方式查询 Antigravity CLI 摘要索引。**Resume** 在原主机、原目录启动 CLI，并为具名 profile 设置 `CLAUDE_CONFIG_DIR` 或 `CODEX_HOME`。本机可在 Herdr 配置目录用 `history-launchers.json` 把 Claude profile 路径或本机 AGY 映射到现有 zsh 别名，例如 `{"claude": {"/absolute/profile/path": "myclaude"}, "agy": "myagy"}`。别名由 shell 加载，网关凭证继续由原包装脚本管理。
 
 ## 使用预览
 

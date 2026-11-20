@@ -15,7 +15,7 @@ Native Herdr demos use the published layout geometry and synthetic spaces, agent
 - **Files + Preview:** click a file to open a pane to the terminal's right. Further selections reuse that tab's preview. Saving a file refreshes its preview.
 - Press **⌘⌥O**, or right-click a terminal and choose **New Files**. Enter a directory to browse it in a new right-hand pane.
 - **Keyboard browsing:** click Files, then use ↑/↓ to move through visible rows while Preview follows the selected file. The selection stays highlighted and scrolls into view. ←/→ navigates folders; Enter opens a file or toggles a folder; Esc returns to the terminal.
-- **History:** browse and search Claude Code, Codex, and Pi sessions on this Mac or a connected machine, inspect transcripts, and resume in a new tab on the machine that owns the session. Transcript dots show each user turn: hover for its prompt and click to jump there.
+- **History:** browse and search Claude Code, Codex, Antigravity CLI, and Pi sessions on this Mac or a connected machine, inspect transcripts, and resume in a new tab on the machine that owns the session. Transcript dots show each user turn: hover for its prompt and click to jump there.
 
 The status bar remains Herdr's stock status bar. This package does not include quota queries, credential readers, or Quote/0 integration.
 
@@ -24,7 +24,7 @@ The status bar remains Herdr's stock status bar. This package does not include q
 - Herdr desktop **0.1.16** is the tested version. Run the mod checks when using a newer release. This is not a Herdr TUI layout.
 - `python3` on the owning machine for History, file previews, rename and delete; `git` for repository state.
 - Image preparation currently targets **macOS** and uses its built-in `sips`. Rich image previews require local files. On connected machines, Python 3 enables the same bounded text and hex previews. Herdr can still preview small UTF-8 files if remote Python is unavailable.
-- The matching `claude`, `codex`, or `pi` executable must be installed to Resume that agent.
+- The matching `claude`, `codex`, `agy`, or `pi` executable must be installed to Resume that agent.
 
 JPG, PNG, SVG, GIF, BMP, TIFF, HEIC, HEIF, AVIF, ICNS, JP2, PSD, and WebP have been checked with sample files. GIF previews are still images. Additional ImageIO/RAW formats are best effort.
 
@@ -57,7 +57,7 @@ Press **⌘⌥O** or right-click a terminal and select **New Files**. Enter an a
 
 Right-click a file or click its **⋯** in **Files** to copy its full path, rename it, or delete it. On this Mac, **Reveal in Finder** selects the file and **Delete** moves it to Trash after confirmation. Remote delete permanently removes the selected file after confirmation. Rename refuses to replace an existing entry. Folders offer Copy Path and local Finder reveal.
 
-In **History**, **Current space** follows the host of the active space. Choose **Local** or a machine name to show its sessions across all folders. **This folder** uses the active folder on that host, and **All** shows its sessions across folders. Use an existing Herdr connection with Python 3 available on the remote host. The helper reads transcripts as the connected OS user, using `CODEX_HOME` and `CLAUDE_CONFIG_DIR` when set. **Resume** sends the agent command to the same machine and uses the recorded working directory.
+In **History**, **Current space** follows the host of the active space. Choose **Local** or a machine name to show its sessions across all folders. **This folder** uses the active folder on that host, and **All** shows its sessions across folders. Use an existing Herdr connection with Python 3 available on the remote host. The helper reads transcripts as the connected OS user, using `CODEX_HOME` and `CLAUDE_CONFIG_DIR` when set. Claude profiles under `~/.claude-profiles/*/projects` and separate Codex homes under `~/.codex-*/sessions` are discovered automatically. Antigravity CLI entries use its read-only local summary index. **Resume** starts the native CLI on the same machine in the recorded working directory. It sets `CLAUDE_CONFIG_DIR` or `CODEX_HOME` for a named profile. On this Mac, an optional `history-launchers.json` in the Herdr app directory can map a Claude profile path or all local AGY sessions to existing zsh aliases. For example, `{"claude": {"/absolute/profile/path": "myclaude"}, "agy": "myagy"}`. The shell loads the alias; pass gateway credentials through the existing wrapper rather than the JSON file.
 
 ## Using Preview
 

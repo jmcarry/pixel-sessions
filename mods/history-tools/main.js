@@ -6,8 +6,13 @@ import { spaces, machines, panes, focused, exec, appHome, home, readTextFile, th
 // One entry per agent whose transcripts history.py can read. `resume` builds
 // the command that reopens a session in its own folder.
 const AGENTS = {
-  claude: { name: "Claude", icon: "icons/claude.svg", tint: false, resume: (s) => ["claude", "--resume", s.id] },
-  codex: { name: "Codex", icon: "icons/codex.svg", tint: false, resume: (s) => ["codex", "resume", s.id] },
+  claude: { name: "Claude", icon: "icons/claude.svg", tint: false, resume: (s) => s.profile
+    ? ["python3", "-c", 'import os,sys; os.environ["CLAUDE_CONFIG_DIR"]=sys.argv[1]; os.execvp("claude", ["claude", "--resume", sys.argv[2]])', s.profile, s.id]
+    : ["claude", "--resume", s.id] },
+  codex: { name: "Codex", icon: "icons/codex.svg", tint: false, resume: (s) => s.profile
+    ? ["python3", "-c", 'import os,sys; os.environ["CODEX_HOME"]=sys.argv[1]; os.execvp("codex", ["codex", "--no-daemon", "resume", sys.argv[2]])', s.profile, s.id]
+    : ["codex", "resume", s.id] },
+  agy: { name: "Antigravity", icon: "icons/antigravity.svg", tint: false, resume: (s) => ["agy", "--conversation", s.id] },
   pi: { name: "Pi", icon: "icons/pi.svg", tint: true, resume: (s) => ["pi", "--session", s.file] },
 };
 const SCRIPT = () => `${appHome()}/mods/history-tools/history.py`;
@@ -51,7 +56,28 @@ function clock(ms) {
 }
 
 const inside = (path, root) => Boolean(path && root && (path === root || path.startsWith(root.endsWith("/") ? root : root + "/")));
+const inFolder = (session, root) => (session.workspaces ?? [session.cwd]).some(path => inside(path, root));
 const short = (path, home) => (path && home && path.startsWith(home) ? "~" + path.slice(home.length) : path ?? "");
+const profileName = (session) => session.profile?.split(/[\\/]/).pop();
+const sessionKey = (session) => `${session.agent}:${session.profile ?? ""}:${session.id}`;
+const rowCount = (session) => session.agent === "agy" ? `${session.steps} steps`
+  : `${session.turns} ${session.turns === 1 ? "prompt" : "prompts"}`;
+
+function localAlias(session, launchers) {
+  if (session.machine) return null;
+  const alias = session.agent === "claude" && session.profile ? launchers?.claude?.[session.profile]
+    : session.agent === "agy" ? launchers?.agy : null;
+  return typeof alias === "string" && /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(alias) ? alias : null;
+}
+
+function resumeArgs(session, launchers) {
+  const alias = localAlias(session, launchers);
+  if (!alias) return AGENTS[session.agent]?.resume?.(session);
+  // The shell loads the local alias definitions. The session ID is a positional
+  // argument and is never inserted into the shell program.
+  return ["/bin/zsh", "-lic", `${alias} "$@"`, "herdr-history",
+    session.agent === "claude" ? "--resume" : "--conversation", session.id];
+}
 
 export default class History extends View {
   init(_props, cx) {
@@ -79,9 +105,14 @@ export default class History extends View {
     this.loading = token;
     cx.spawn(async (cx) => {
       try {
-        const sessions = await history(machine, "list");
+        const [sessions, launchers] = await Promise.all([
+          history(machine, "list"),
+          machine ? null : readTextFile(`${appHome()}/history-launchers.json`)
+            .then(text => text && JSON.parse(text)).catch(() => null),
+        ]);
         if (this.loading === token) {
           this.sessions = sessions.map(session => ({ ...session, machine }));
+          this.launchers = launchers;
           this.error = null;
         }
       } catch (e) {
@@ -139,12 +170,12 @@ export default class History extends View {
   }
 
   resume(session) {
-    const argv = AGENTS[session.agent]?.resume?.(session);
+    const argv = resumeArgs(session, this.launchers);
     if (checking() || !argv) return;
     const machine = session.machine ?? null;
     const available = spaces().filter((s) => (s.machine ?? null) === machine);
     const normalize = (p) => String(p || "").replace(/\\/g, "/").replace(/\/+$/, "");
-    const folder = session.cwd;
+    const folder = (machine === this.machine && session.workspaces?.find(path => inside(path, this.root))) || session.cwd;
     const tabFor = new Map(available.flatMap((s) => (s.tabs || []).map((t) => [t.id, s])));
     const exact = folder ? available.find((s) => normalize(s.folder) === normalize(folder))
       ?? panes().filter((p) => p.terminal && normalize(p.cwd) === normalize(folder)).map((p) => tabFor.get(p.tab)).find(Boolean)
@@ -157,7 +188,7 @@ export default class History extends View {
 
   // Resume straight from the list: a quiet play icon that becomes a button on row hover.
   quickResume(s, hot, t) {
-    return h_flex().id(`resume-${s.agent}-${s.id}`).h(24).flex_none().gap(4).items_center().justify_center().rounded(6).cursor_pointer()
+    return h_flex().id(`resume-${sessionKey(s)}`).h(24).flex_none().gap(4).items_center().justify_center().rounded(6).cursor_pointer()
       .when(hot, (el) => el.px(9).bg(t.solid).text_color(t.solid_foreground).text_size(11.5))
       .when(!hot, (el) => el.w(24).text_color(t.dim))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
@@ -170,8 +201,9 @@ export default class History extends View {
     const q = this.query.trim().toLowerCase();
     return this.sessions.filter((s) =>
       (this.agent === "all" || s.agent === this.agent) &&
-      (this.scope === "all" || !this.cwd || inside(s.cwd, this.root)) &&
-      (!q || s.title.toLowerCase().includes(q) || (s.cwd ?? "").toLowerCase().includes(q)));
+      (this.scope === "all" || !this.cwd || inFolder(s, this.root)) &&
+      (!q || [s.title, s.cwd, s.id, profileName(s), localAlias(s, this.launchers)]
+        .some(value => value?.toLowerCase().includes(q))));
   }
 
   icon(agent, size, t) {
@@ -194,7 +226,7 @@ export default class History extends View {
   renderList(t) {
     const list = this.visible();
     const here = this.scope === "here" && Boolean(this.cwd), counts = {};
-    for (const s of this.sessions) if (!here || inside(s.cwd, this.root)) counts[s.agent] = (counts[s.agent] ?? 0) + 1;
+    for (const s of this.sessions) if (!here || inFolder(s, this.root)) counts[s.agent] = (counts[s.agent] ?? 0) + 1;
     const present = Object.keys(AGENTS).filter((a) => counts[a]);
     const hostNames = [...new Set([this.machine, ...machines().map(m => m.name)].filter(Boolean))];
     const host = (id, label, machine) => this.chip(id, label, this.hostChoice === machine, t,
@@ -228,10 +260,10 @@ export default class History extends View {
         .when(Boolean(this.error), (el) => el.child(div().p(8).text_color(t.ansi1).child(this.error)))
         .when(!this.error && !list.length, (el) => el.child(div().p(8).text_color(t.dim).child(empty)))
         .children(list.slice(0, LIMIT).map((s) =>
-          h_flex().id(`session-${s.agent}-${s.id}`).flex_none().px(8).py(7).gap(10).items_center().rounded(8).cursor_pointer()
+          h_flex().id(`session-${sessionKey(s)}`).flex_none().px(8).py(7).gap(10).items_center().rounded(8).cursor_pointer()
             .hover((st) => st.bg(t.hover)).on_click((_e, cx) => this.show(s, cx))
             .on_hover((hovered, cx) => {
-              const key = `${s.agent}-${s.id}`;
+              const key = sessionKey(s);
               if (hovered) this.hot = key; else if (this.hot === key) this.hot = null;
               cx.notify();
             })
@@ -240,9 +272,10 @@ export default class History extends View {
               .child(div().text_size(12.5).truncate().child(s.title || "(untitled)"))
               .child(h_flex().gap(6).text_size(11).text_color(t.dim)
                 .child(div().flex_none().child(ago(s.updated)))
-                .child(div().flex_none().child(`· ${s.turns} ${s.turns === 1 ? "prompt" : "prompts"}`))
+                .child(div().flex_none().child(`· ${rowCount(s)}`))
+                .when(Boolean(s.profile), el => el.child(div().min_w(0).truncate().child(`· ${profileName(s)}`)))
                 .when(!here, (el) => el.child(div().min_w(0).truncate().child(`· ${short(s.cwd, this.home)}`)))))
-            .when(Boolean(AGENTS[s.agent]?.resume), (el) => el.child(this.quickResume(s, this.hot === `${s.agent}-${s.id}`, t))))))
+            .when(Boolean(AGENTS[s.agent]?.resume), (el) => el.child(this.quickResume(s, this.hot === sessionKey(s), t))))))
       .when(list.length > LIMIT, (el) => el.child(div().px(12).py(4).text_size(11).text_color(t.dim).child(`Showing the ${LIMIT} most recent of ${list.length}; search to narrow`)));
   }
 
@@ -276,14 +309,18 @@ export default class History extends View {
       .child(h_flex().flex_none().px(14).py(8).gap(8).items_center().border_b(1).border_color(t.border).text_size(11).text_color(t.dim)
         .child(v_flex().flex_1().min_w(0).gap(2)
           .child(div().truncate().child(short(s.cwd, this.home) || "(unknown folder)"))
-          .child(div().truncate().child(`${a?.name ?? s.agent} · ${s.machine ?? "Local"} · ${clock(s.created)} → ${ago(s.updated)}`)))
+          .child(div().truncate().child([a?.name ?? s.agent, profileName(s), localAlias(s, this.launchers), s.machine ?? "Local",
+            s.created ? `${clock(s.created)} → ${ago(s.updated)}` : ago(s.updated)].filter(Boolean).join(" · "))))
         .child(div().id("history-resume").h(28).px(12).flex_none().flex().items_center().rounded(7).text_size(12)
           .bg(can ? t.solid : t.raised).text_color(can ? t.solid_foreground : t.dim).when(can, (el) => el.cursor_pointer())
           .on_click(() => this.resume(s)).child(can ? "Resume" : "View only")))
       .when(!tr, (el) => el.child(div().px(14).py(12).text_color(this.loadError ? t.ansi1 : t.dim).child(this.loadError ?? "Loading transcript…")))
       .when(Boolean(tr && tr.total > tr.messages.length), (el) => el.child(div().flex_none().px(14).pt(8).text_size(11).text_color(t.dim)
         .child(`Showing the last ${tr.messages.length} of ${tr.total} entries`)))
-      .when(Boolean(tr && !tr.messages.length), (el) => el.child(div().px(14).py(12).text_color(t.dim).child("No messages")))
+      .when(Boolean(tr?.summaryOnly), el => el.child(v_flex().id("agy-summary").flex_1().min_h(0).overflow_y_scrollbar().px(14).py(12).gap(8)
+        .child(div().text_color(t.dim).child("Antigravity summary. Resume to read the full conversation in AGY."))
+        .when(Boolean(tr.summary), box => box.child(TextView.markdown("agy-summary-text", tr.summary).selectable()))))
+      .when(Boolean(tr && !tr.summaryOnly && !tr.messages.length), (el) => el.child(div().px(14).py(12).text_color(t.dim).child("No messages")))
       .when(Boolean(tr?.messages.length), (el) => el.child(this.renderTranscript(tr.messages, t)));
   }
 

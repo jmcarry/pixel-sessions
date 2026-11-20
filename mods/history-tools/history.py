@@ -8,18 +8,25 @@
 Sources: Claude Code, Codex and Pi (jsonl files). Per-file results are cached
 by (mtime, size) so a refresh only re-reads transcripts that changed.
 """
+from contextlib import closing
 import glob
 import json
 import os
+from pathlib import Path
 import re
+import sqlite3
 import sys
 import tempfile
+from urllib.parse import unquote, urlsplit
 
 HOME = os.path.expanduser("~")
 CACHE = os.path.join(HOME, ".cache", "herdr-history-tools", "index.json")
-CODEX_DIR = os.path.expanduser(os.environ.get("CODEX_HOME") or os.path.join(HOME, ".codex"))
-CLAUDE_DIR = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude"))
-CACHE_VERSION = 4
+DEFAULT_CODEX_DIR = os.path.realpath(os.path.join(HOME, ".codex"))
+CODEX_DIR = os.path.expanduser(os.environ.get("CODEX_HOME") or DEFAULT_CODEX_DIR)
+DEFAULT_CLAUDE_DIR = os.path.realpath(os.path.join(HOME, ".claude"))
+CLAUDE_DIR = os.path.expanduser(os.environ.get("CLAUDE_CONFIG_DIR") or DEFAULT_CLAUDE_DIR)
+AGY_DB = Path(HOME, ".gemini", "antigravity-cli", "conversation_summaries.db")
+CACHE_VERSION = 6
 TITLE_MAX = 160
 TEXT_MAX = 6000
 SHOW_MAX = 400
@@ -225,9 +232,9 @@ def codex_show(path):
     return [message for legacy, message in out if not (legacy and native_user)]
 
 
-def codex_titles():
+def codex_titles(profile):
     names = {}
-    path = os.path.join(CODEX_DIR, "session_index.jsonl")
+    path = os.path.join(profile, "session_index.jsonl")
     if os.path.exists(path):
         for d in jsonl(path):
             if d.get("id") and d.get("thread_name"):
@@ -293,14 +300,91 @@ def pi_show(path):
 # ---------- driver ----------
 
 def file_sources():
-    for f in glob.glob(os.path.join(CLAUDE_DIR, "projects", "*", "*.jsonl")):
-        yield "claude", f
-    for f in glob.glob(os.path.join(CODEX_DIR, "sessions", "*", "*", "*", "*.jsonl")):
-        yield "codex", f
+    directories = [CLAUDE_DIR, DEFAULT_CLAUDE_DIR]
+    directories.extend(sorted(glob.glob(os.path.join(HOME, ".claude-profiles", "*"))))
+    seen = set()
+    for directory in directories:
+        profile = os.path.realpath(directory)
+        if profile in seen:
+            continue
+        seen.add(profile)
+        for f in glob.glob(os.path.join(profile, "projects", "*", "*.jsonl")):
+            yield "claude", f, profile
+    homes = [CODEX_DIR, DEFAULT_CODEX_DIR]
+    homes.extend(sorted(glob.glob(os.path.join(HOME, ".codex-*"))))
+    seen_stores = set()
+    for directory in homes:
+        profile = os.path.realpath(directory)
+        store = os.path.realpath(os.path.join(profile, "sessions"))
+        if store in seen_stores or not os.path.isdir(store):
+            continue
+        seen_stores.add(store)
+        for f in glob.glob(os.path.join(store, "*", "*", "*", "*.jsonl")):
+            yield "codex", f, profile
     pi_home = os.path.expanduser(os.environ.get("PI_CODING_AGENT_DIR") or os.path.join(HOME, ".pi", "agent"))
     pi_sessions = os.path.expanduser(os.environ.get("PI_CODING_AGENT_SESSION_DIR") or os.path.join(pi_home, "sessions"))
     for f in glob.glob(os.path.join(pi_sessions, "**", "*.jsonl"), recursive=True):
-        yield "pi", f
+        yield "pi", f, None
+
+
+def agy_rows(sql, params=()):
+    # The CLI owns this database. Open it read-only, including while agy is live.
+    if not AGY_DB.is_file():
+        return []
+    try:
+        with closing(sqlite3.connect(AGY_DB.as_uri() + "?mode=ro", uri=True, timeout=0.5)) as db:
+            return db.execute(sql, params).fetchall()
+    except sqlite3.Error:  # a CLI upgrade or a locked index must not hide other agents
+        return []
+
+
+def agy_workspaces(workspace_uris):
+    try:
+        uris = json.loads(workspace_uris)
+    except (TypeError, ValueError):
+        return []
+    paths = []
+    for uri in uris if isinstance(uris, list) else []:
+        if not isinstance(uri, str):
+            continue
+        try:
+            parsed = urlsplit(uri)
+        except ValueError:
+            continue
+        if parsed.scheme != "file" or parsed.hostname not in (None, "localhost"):
+            continue
+        path = unquote(parsed.path)
+        if os.name == "nt" and re.match(r"^/[a-zA-Z]:/", path):
+            path = path[1:]
+        if os.path.isabs(path) and "\0" not in path and path not in paths:
+            paths.append(path)
+    return paths
+
+
+def agy_list():
+    rows = agy_rows("""
+        SELECT conversation_id, title, step_count, last_modified_time, workspace_uris
+        FROM conversation_summaries
+        WHERE COALESCE(parent_conversation_id, '') = ''
+          AND COALESCE(killed, 0) = 0
+        ORDER BY last_modified_time DESC
+        LIMIT 500
+    """)
+    sessions = []
+    for sid, title, steps, updated, uris in rows:
+        if not sid or not steps:
+            continue
+        paths = agy_workspaces(uris)
+        sessions.append({"agent": "agy", "id": sid, "file": sid, "title": clip(title or "Antigravity session", TITLE_MAX),
+                         "cwd": paths[0] if paths else None, "workspaces": paths,
+                         "updated": ms(updated), "created": 0, "steps": steps})
+    return sessions
+
+
+def agy_show(sid):
+    rows = agy_rows("SELECT preview FROM conversation_summaries WHERE conversation_id = ?", (sid,))
+    return {"summary": clip(rows[0][0], TEXT_MAX) if rows and rows[0][0] else "",
+            "summaryOnly": True, "total": 0, "messages": []}
 
 
 def index_file(agent, path):
@@ -323,7 +407,7 @@ def cmd_list():
         cache = {}
     files = cache.get("files", {})
     fresh, sessions = {}, []
-    for agent, path in file_sources():
+    for agent, path, profile in file_sources():
         try:
             st = os.stat(path)
         except OSError:
@@ -335,6 +419,9 @@ def cmd_list():
         else:
             try:
                 entry = index_file(agent, path)
+                default = {"claude": DEFAULT_CLAUDE_DIR, "codex": DEFAULT_CODEX_DIR}.get(agent)
+                if entry and profile and profile != default:
+                    entry["profile"] = profile
             except Exception:  # one unreadable transcript never hides the rest
                 entry = None
         fresh[path] = {"stamp": stamp, "session": entry}
@@ -356,15 +443,23 @@ def cmd_list():
                 os.unlink(tmp)
             except OSError:
                 pass
-    names = codex_titles()
+    titles = {}
     for s in sessions:
-        if s["agent"] == "codex" and s["id"] in names:
-            s["title"] = clip(names[s["id"]], TITLE_MAX)
+        if s["agent"] != "codex":
+            continue
+        profile = s.get("profile", DEFAULT_CODEX_DIR)
+        if profile not in titles:
+            titles[profile] = codex_titles(profile)
+        if s["id"] in titles[profile]:
+            s["title"] = clip(titles[profile][s["id"]], TITLE_MAX)
+    sessions.extend(agy_list())
     sessions.sort(key=lambda s: s.get("updated") or 0, reverse=True)
     return sessions
 
 
 def cmd_show(agent, ref):
+    if agent == "agy":
+        return agy_show(ref)
     if agent == "claude":
         msgs = claude_show(ref)
     elif agent == "codex":
