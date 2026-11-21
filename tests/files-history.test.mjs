@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -116,8 +116,94 @@ with sqlite3.connect(p) as db:
     const view = JSON.parse(run(script, "show", "agy", rows[0].file));
     assert.equal(view.summaryOnly, true);
     assert.equal(view.summary.length <= 6000, true);
+    const deletion = spawnSync("python3", ["-c", script, "trash", "agy", rows[0].file, rows[0].id, "fixture"], { env });
+    assert.equal(deletion.status, 1);
     assert.deepEqual(readFileSync(db), before);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("Session Trash moves only verified, unchanged transcripts and preserves them for recovery", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pixel-session-trash-"));
+  const script = readFileSync(historyHelper, "utf8");
+  const pi = join(dir, ".pi/agent/sessions");
+  const env = { ...process.env, HOME: dir, USERPROFILE: dir, CLAUDE_CONFIG_DIR: "", CODEX_HOME: "",
+    PI_CODING_AGENT_SESSION_DIR: pi };
+  const stamp = "2026-11-20T01:02:03Z";
+  const fixture = (path, rows) => {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, rows.map(row => JSON.stringify(row)).join("\n") + "\n");
+    return path;
+  };
+  const run = (...args) => spawnSync("python3", ["-c", script, ...args], { env, encoding: "utf8", timeout: 5000 });
+  const read = (...args) => {
+    const result = run(...args);
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  try {
+    fixture(join(dir, ".claude/projects/demo/claude.jsonl"), [
+      { type: "user", timestamp: stamp, cwd: dir, message: { content: "Test Claude" } },
+    ]);
+    fixture(join(dir, ".codex/sessions/2026/11/20/codex.jsonl"), [
+      { type: "session_meta", payload: { id: "test-codex", cwd: dir, timestamp: stamp } },
+      { type: "response_item", timestamp: stamp, payload: { type: "message", role: "user", content: "Test Codex" } },
+    ]);
+    fixture(join(pi, "nested/pi.jsonl"), [
+      { type: "session", id: "test-pi", cwd: dir, timestamp: stamp },
+      { type: "message", timestamp: stamp, message: { role: "user", content: "Test Pi" } },
+    ]);
+    const rows = read("list");
+    assert.equal(rows.length, 3);
+    const codex = rows.find(row => row.agent === "codex");
+    const foreign = fixture(join(dir, "unmanaged.jsonl"), [{ type: "user", message: { content: "Keep" } }]);
+    assert.equal(run("trash", "codex", foreign, codex.id, codex.revision).status, 1);
+    assert.equal(run("trash", "codex", codex.file, "wrong-id", codex.revision).status, 1);
+    appendFileSync(codex.file, "\n");
+    assert.equal(run("trash", "codex", codex.file, codex.id, codex.revision).status, 1);
+    assert.equal(existsSync(codex.file), true);
+    assert.equal(existsSync(foreign), true);
+
+    const recover = [];
+    for (const row of read("list")) {
+      const bytes = readFileSync(row.file);
+      const { trash } = read("trash", row.agent, row.file, row.id, row.revision);
+      assert.match(trash, /\.pixel-sessions-trash/);
+      assert.equal(existsSync(row.file), false);
+      assert.deepEqual(readFileSync(trash), bytes);
+      recover.push([trash, row.file]);
+    }
+    assert.equal(read("list").length, 0);
+    for (const [trash, file] of recover) renameSync(trash, file);
+    assert.equal(read("list").length, 3);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("History waits for confirmation and moves the selected session on its owning host", async () => {
+  const calls = [], tasks = [];
+  const implementation = readFileSync(historyView, "utf8")
+    .replace(/^import .*;$/gm, "").replace("export default class", "class") + "\nHistory";
+  const History = vm.runInNewContext(implementation, {
+    View: class {}, checking: () => false, readTextFile: async () => "helper", appHome: () => "/app",
+    exec: async (command, argv, options) => {
+      calls.push({ command, argv, options });
+      return { code: 0, stdout: '{"trash":"/recovery/transcript.jsonl"}' };
+    },
+  });
+  const session = { agent: "claude", id: "id", file: "/transcript.jsonl", revision: "revision", machine: "owning-host" };
+  const view = new History();
+  view.machine = "viewed-host"; // A host switch must never redirect the action.
+  view.sessions = [session];
+  const cx = { spawn: task => tasks.push(task(cx)), notify() {} };
+  view.requestDelete(session, cx);
+  assert.equal(calls.length, 0);
+  view.confirmDelete(cx);
+  view.confirmDelete(cx);
+  await Promise.all(tasks);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.on, "owning-host");
+  assert.deepEqual([...calls[0].argv], ["-c", "helper", "trash", "claude", "/transcript.jsonl", "id", "revision"]);
+  assert.equal(view.trashed.path, "/recovery/transcript.jsonl");
+  assert.equal(view.pendingDelete, null);
 });
 
 test("History ignores old host responses and resumes sessions on the owning machine", async () => {

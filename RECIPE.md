@@ -32,6 +32,8 @@ Local preview panes watch their selected file's folder; saving refreshes the con
 
 With two or more user turns, the transcript has a right-edge dot rail. Hover a dot for its turn number and prompt. Clicking restarts the lazy transcript list at that turn; “Show N earlier entries” returns to the complete retained transcript. This implements a jump without depending on an unavailable lazy-list scrolling API.
 
+For Claude, Codex and Pi, the session detail offers **Delete**. Require confirmation with the session title and original host. The helper validates the selected transcript and its revision, then moves it to a private `.pixel-sessions-trash` recovery folder on the same volume. Return the recovery path for copying and refresh the list. Antigravity deletion is handled by its native picker.
+
 ## Built from
 
 `layouts/pixel-sessions.json` is a personal clone of Herdr `main` 0.1.16. The root has a sidebar column and work column. Work contains the tabs block, a row of the active tab and right panel, then the stock status bar. Keep the `panel-body` stack and its distinct `files`, `changes`, `history` child ids.

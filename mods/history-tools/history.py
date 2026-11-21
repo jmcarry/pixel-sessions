@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # Modified for Pixel Sessions; see THIRD_PARTY_NOTICES.md for provenance and license scope.
-"""Indexes and reads coding-agent session transcripts for the History panel.
+"""Indexes, reads and moves coding-agent sessions to Session Trash.
 
   history.py list            -> JSON array of sessions, newest first
   history.py show AGENT REF  -> JSON array of messages for one session
+  history.py trash AGENT REF ID REVISION -> recovery path for a moved transcript
 
 Sources: Claude Code, Codex and Pi (jsonl files). Per-file results are cached
 by (mtime, size) so a refresh only re-reads transcripts that changed.
@@ -15,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import stat
 import sys
 import tempfile
 from urllib.parse import unquote, urlsplit
@@ -30,6 +32,7 @@ CACHE_VERSION = 6
 TITLE_MAX = 160
 TEXT_MAX = 6000
 SHOW_MAX = 400
+SESSION_TRASH = ".pixel-sessions-trash"
 
 
 def clip(text, n):
@@ -324,7 +327,8 @@ def file_sources():
     pi_home = os.path.expanduser(os.environ.get("PI_CODING_AGENT_DIR") or os.path.join(HOME, ".pi", "agent"))
     pi_sessions = os.path.expanduser(os.environ.get("PI_CODING_AGENT_SESSION_DIR") or os.path.join(pi_home, "sessions"))
     for f in glob.glob(os.path.join(pi_sessions, "**", "*.jsonl"), recursive=True):
-        yield "pi", f, None
+        if SESSION_TRASH not in Path(os.path.relpath(f, pi_sessions)).parts:
+            yield "pi", f, None
 
 
 def agy_rows(sql, params=()):
@@ -397,6 +401,44 @@ def index_file(agent, path):
     return None
 
 
+def revision(info):
+    # Keep nanoseconds and inode numbers exact across the JSON/JS boundary.
+    return f"{info.st_dev}:{info.st_ino}:{info.st_mtime_ns}:{info.st_size}"
+
+
+def trash_session(agent, ref, sid, expected):
+    if agent not in ("claude", "codex", "pi") or not any(
+        owner == agent and file == ref for owner, file, _ in file_sources()
+    ):
+        raise ValueError("This is not a recognized session on this host. Refresh History and try again.")
+    source = Path(ref)
+    info = source.lstat()
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("Only regular session files can be moved to Session Trash.")
+    if revision(info) != expected:
+        raise ValueError("The session file changed. Close the session and refresh History before deleting it.")
+    session = index_file(agent, ref)
+    if not session or session["id"] != sid:
+        raise ValueError("The file no longer matches the selected session. Refresh History and try again.")
+
+    # Store the unmodified transcript on the same host and volume. A private
+    # subdirectory makes the destination unique while keeping the original name.
+    trash = source.parent / SESSION_TRASH
+    trash.mkdir(mode=0o700, exist_ok=True)
+    if not stat.S_ISDIR(trash.lstat().st_mode):
+        raise ValueError("Session Trash must be a real directory.")
+    slot = Path(tempfile.mkdtemp(dir=trash))
+    destination = slot / source.name
+    try:
+        if revision(source.lstat()) != expected:
+            raise ValueError("The session file changed. Close the session and refresh History before deleting it.")
+        source.rename(destination)
+    except (OSError, ValueError):
+        slot.rmdir()
+        raise
+    return {"trash": str(destination)}
+
+
 def cmd_list():
     try:
         with open(CACHE) as f:
@@ -426,7 +468,7 @@ def cmd_list():
                 entry = None
         fresh[path] = {"stamp": stamp, "session": entry}
         if entry:
-            sessions.append(entry)
+            sessions.append({**entry, "revision": revision(st)})
     tmp = None
     try:
         cache_dir = os.path.dirname(CACHE)
@@ -489,6 +531,12 @@ def main():
         result = cmd_list()
     elif args[:1] == ["show"] and len(args) == 3:
         result = cmd_show(args[1], args[2])
+    elif args[:1] == ["trash"] and len(args) == 5:
+        try:
+            result = trash_session(*args[1:])
+        except (OSError, ValueError) as error:
+            print(error, file=sys.stderr)
+            sys.exit(1)
     else:
         print(__doc__, file=sys.stderr)
         sys.exit(2)

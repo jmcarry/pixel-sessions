@@ -62,6 +62,7 @@ const profileName = (session) => session.profile?.split(/[\\/]/).pop();
 const sessionKey = (session) => `${session.agent}:${session.profile ?? ""}:${session.id}`;
 const rowCount = (session) => session.agent === "agy" ? `${session.steps} steps`
   : `${session.turns} ${session.turns === 1 ? "prompt" : "prompts"}`;
+const canDelete = (s) => Boolean(s?.revision) && ["claude", "codex", "pi"].includes(s.agent);
 
 function localAlias(session, launchers) {
   if (session.machine) return null;
@@ -169,6 +170,40 @@ export default class History extends View {
     cx.notify();
   }
 
+  requestDelete(session, cx) {
+    if (checking() || !canDelete(session) || this.deleting) return;
+    this.pendingDelete = session;
+    this.deleteError = null;
+    cx.notify();
+  }
+
+  confirmDelete(cx) {
+    const session = this.pendingDelete;
+    if (checking() || this.deleting || !canDelete(session)) return;
+    this.deleting = true;
+    this.deleteError = null;
+    cx.notify();
+    cx.spawn(async cx => {
+      try {
+        const { trash } = await history(session.machine, "trash", session.agent, session.file, session.id, session.revision);
+        this.trashed = { path: trash, host: session.machine ?? "Local" };
+        this.pendingDelete = null;
+        if (this.open === session) { this.open = null; this.transcript = null; }
+        if (this.machine === (session.machine ?? null)) {
+          this.sessions = this.sessions.filter(s => s.file !== session.file || s.agent !== session.agent);
+          // Ignore any list request that started before the move.
+          this.loading = null;
+          this.refresh(cx);
+        }
+      } catch (e) {
+        this.deleteError = e?.message ?? String(e);
+      } finally {
+        this.deleting = false;
+        cx.notify();
+      }
+    });
+  }
+
   resume(session) {
     const argv = resumeArgs(session, this.launchers);
     if (checking() || !argv) return;
@@ -257,6 +292,10 @@ export default class History extends View {
           .children(present.map((a) => this.chip(`agent-${a}`, `${AGENTS[a].name} ${counts[a]}`, this.agent === a, t,
             (_e, cx) => { this.agent = this.agent === a ? "all" : a; cx.notify(); }, this.icon(a, 13, t))))))
       .child(v_flex().id("history-list").flex_1().min_h(0).overflow_y_scrollbar().p(6).gap(2)
+        .when(Boolean(this.trashed), el => el.child(h_flex().gap(5).p(4).items_center()
+          .child(div().flex_1().min_w(0).text_size(11).text_color(t.dim).child(`Session Trash on ${this.trashed.host}`))
+          .child(this.chip("history-copy-trashed", "Copy path", false, t, (_e, cx) => cx.write_to_clipboard(this.trashed.path)))
+          .child(this.chip("history-dismiss-trashed", "×", false, t, (_e, cx) => { this.trashed = null; cx.notify(); }))))
         .when(Boolean(this.error), (el) => el.child(div().p(8).text_color(t.ansi1).child(this.error)))
         .when(!this.error && !list.length, (el) => el.child(div().p(8).text_color(t.dim).child(empty)))
         .children(list.slice(0, LIMIT).map((s) =>
@@ -311,6 +350,7 @@ export default class History extends View {
           .child(div().truncate().child(short(s.cwd, this.home) || "(unknown folder)"))
           .child(div().truncate().child([a?.name ?? s.agent, profileName(s), localAlias(s, this.launchers), s.machine ?? "Local",
             s.created ? `${clock(s.created)} → ${ago(s.updated)}` : ago(s.updated)].filter(Boolean).join(" · "))))
+        .when(canDelete(s), el => el.child(this.chip("history-delete", "Delete", false, t, (_e, cx) => this.requestDelete(s, cx))))
         .child(div().id("history-resume").h(28).px(12).flex_none().flex().items_center().rounded(7).text_size(12)
           .bg(can ? t.solid : t.raised).text_color(can ? t.solid_foreground : t.dim).when(can, (el) => el.cursor_pointer())
           .on_click(() => this.resume(s)).child(can ? "Resume" : "View only")))
@@ -319,9 +359,27 @@ export default class History extends View {
         .child(`Showing the last ${tr.messages.length} of ${tr.total} entries`)))
       .when(Boolean(tr?.summaryOnly), el => el.child(v_flex().id("agy-summary").flex_1().min_h(0).overflow_y_scrollbar().px(14).py(12).gap(8)
         .child(div().text_color(t.dim).child("Antigravity summary. Resume to read the full conversation in AGY."))
+        .child(div().text_color(t.dim).child("To delete this conversation, use /resume in AGY and press F4 on the selected row."))
         .when(Boolean(tr.summary), box => box.child(TextView.markdown("agy-summary-text", tr.summary).selectable()))))
       .when(Boolean(tr && !tr.summaryOnly && !tr.messages.length), (el) => el.child(div().px(14).py(12).text_color(t.dim).child("No messages")))
       .when(Boolean(tr?.messages.length), (el) => el.child(this.renderTranscript(tr.messages, t)));
+  }
+
+  renderDelete(t) {
+    const s = this.pendingDelete;
+    return v_flex().size_full().min_h(0)
+      .child(this.header(t, [div().font_semibold().child("Delete session?")]))
+      .child(v_flex().gap(10).p(14)
+        .child(div().font_semibold().child(s.title || "(untitled)"))
+        .child(div().text_size(12).text_color(t.dim).child([AGENTS[s.agent].name, profileName(s), s.machine ?? "Local"].filter(Boolean).join(" · ")))
+        .child(div().text_size(12).child("The transcript moves to Session Trash on this host. To restore it, move it back to its original folder. Close the session before deleting."))
+        .when(Boolean(this.deleteError), el => el.child(div().text_size(12).text_color(t.ansi1).child(this.deleteError)))
+        .child(h_flex().gap(8).justify_end()
+          .child(this.chip("history-delete-cancel", "Cancel", false, t, (_e, cx) => {
+            if (!this.deleting) { this.pendingDelete = null; cx.notify(); }
+          }))
+          .child(this.chip("history-delete-confirm", this.deleting ? "Moving…" : "Move to Session Trash", true, t,
+            (_e, cx) => this.confirmDelete(cx)))));
   }
 
   // The transcript, with a rail on the right: one dot per prompt you sent.
@@ -377,11 +435,13 @@ export default class History extends View {
       .text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (e.key !== "escape") return;
-        if (this.typing) { this.typing = false; this.handle.focus(); }
+        if (this.pendingDelete) {
+          if (!this.deleting) this.pendingDelete = null;
+        } else if (this.typing) { this.typing = false; this.handle.focus(); }
         else if (this.open) { this.open = null; this.transcript = null; }
         else return;
         cx.stop_propagation(); cx.notify();
       })
-      .child(this.open ? this.renderSession(t) : this.renderList(t));
+      .child(this.pendingDelete ? this.renderDelete(t) : this.open ? this.renderSession(t) : this.renderList(t));
   }
 }
