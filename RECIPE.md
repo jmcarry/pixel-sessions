@@ -32,7 +32,7 @@ Local preview panes watch their selected file's folder; saving refreshes the con
 
 With two or more user turns, the transcript has a right-edge dot rail. Hover a dot for its turn number and prompt. Clicking restarts the lazy transcript list at that turn; “Show N earlier entries” returns to the complete retained transcript. This implements a jump without depending on an unavailable lazy-list scrolling API.
 
-For Claude, Codex and Pi, the session detail offers **Delete**. Require confirmation with the session title and original host. The helper validates the selected transcript and its revision, then moves it to a private `.pixel-sessions-trash` recovery folder on the same volume. Return the recovery path for copying and refresh the list. Antigravity deletion is handled by its native picker.
+For Claude, Codex and Pi, the list row’s context menu and the session detail offer **Delete**. Require confirmation with the session title and original host. The helper validates the selected transcript and its revision, then moves it to a private `.pixel-sessions-trash` recovery folder on the same volume. Return the recovery path for copying and refresh the list. Antigravity deletion is handled by its native picker.
 
 ## Built from
 

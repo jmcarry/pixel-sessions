@@ -59,7 +59,7 @@
 
 在 **History** 中，**Current space** 自动跟随当前空间的主机，也可以点 **Local** 或主机名，直接看到所选主机的全部目录。**This folder** 筛选当前主机上的工作目录，**All** 查看所选主机上的全部目录。远程主机需要已经连接 Herdr，并有 Python 3。模块以连接用户身份读取会话，也识别该主机环境中的 `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR`。模块也自动发现 `~/.claude-profiles/*/projects` 中的 Claude 会话和 `~/.codex-*/sessions` 中的独立 Codex 会话，并以只读方式查询 Antigravity CLI 摘要索引。**Resume** 在原主机、原目录启动 CLI，并为具名 profile 设置 `CLAUDE_CONFIG_DIR` 或 `CODEX_HOME`。本机可在 Herdr 配置目录用 `history-launchers.json` 把 Claude profile 路径或本机 AGY 映射到现有 zsh 别名，例如 `{"claude": {"/absolute/profile/path": "myclaude"}, "agy": "myagy"}`。别名由 shell 加载，网关凭证继续由原包装脚本管理。
 
-打开 Claude、Codex 或 Pi 会话详情后，点 **Delete**。先关闭会话，确认框会显示会话和所在主机。确认后，转录文件移到原目录下的隐藏 `.pixel-sessions-trash` 中。用 **Copy path** 找到文件，移回原目录并刷新 History 即可恢复。Antigravity 会话可以在它自己的 `/resume` 列表中删除。
+右键点击 History 列表中的 Claude、Codex 或 Pi 会话，或者打开会话详情，然后点 **Delete**。先关闭会话，确认框会显示会话和所在主机。确认后，转录文件移到原目录下的隐藏 `.pixel-sessions-trash` 中。用 **Copy path** 找到文件，移回原目录并刷新 History 即可恢复。Antigravity 会话可以在它自己的 `/resume` 列表中删除。
 
 ## 使用预览
 

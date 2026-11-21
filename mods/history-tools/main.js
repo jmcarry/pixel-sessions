@@ -2,6 +2,7 @@
 import { View, div, svg, image, list } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextView, Scrollbar } from "gpui-base";
 import { spaces, machines, panes, focused, exec, appHome, home, readTextFile, theme, settings, run, checking } from "herdr";
+import { openOverlay, closeOverlay, props, shared, setShared } from "herdr";
 
 // One entry per agent whose transcripts history.py can read. `resume` builds
 // the command that reopens a session in its own folder.
@@ -18,6 +19,7 @@ const AGENTS = {
 const SCRIPT = () => `${appHome()}/mods/history-tools/history.py`;
 const TOOL_LINES = 6;
 const LIMIT = 100; // most recent sessions shown in the list
+const DELETE_REQUEST = "history-tools.delete-request";
 
 // The folder the panel follows: the focused pane's, else the space's (as Changes does).
 function location() {
@@ -82,6 +84,8 @@ function resumeArgs(session, launchers) {
 
 export default class History extends View {
   init(_props, cx) {
+    const menuToken = props()?.historyMenu;
+    if (menuToken) { this.menuToken = menuToken; return; }
     this.home = home(); this.sessions = []; this.agent = "all"; this.scope = "here"; this.query = "";
     this.hostChoice = undefined;
     this.open = null; this.transcript = null; this.typing = false;
@@ -177,6 +181,25 @@ export default class History extends View {
     cx.notify();
   }
 
+  openSessionMenu(session, cx) {
+    cx.stop_propagation();
+    if (checking() || !canDelete(session)) return;
+    const token = `${Date.now()}-${Math.random()}`;
+    this.menuSession = { token, session };
+    openOverlay({ mod: "history-tools", kind: "popup", at: "pointer", width: 230, height: 180,
+      props: { historyMenu: token } });
+  }
+
+  renderSessionMenu(t) {
+    return v_flex().w_full().p(8).gap(3).bg(t.popover).text_color(t.foreground).text_size(13)
+      .child(div().id("history-row-delete").px(10).py(7).rounded(6).cursor_pointer()
+        .hover(s => s.bg(t.hover)).on_click((_e, cx) => {
+          cx.stop_propagation();
+          setShared(DELETE_REQUEST, this.menuToken);
+          closeOverlay(props()?.overlay);
+        }).child("Delete"));
+  }
+
   confirmDelete(cx) {
     const session = this.pendingDelete;
     if (checking() || this.deleting || !canDelete(session)) return;
@@ -258,6 +281,26 @@ export default class History extends View {
     return h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border).children(children);
   }
 
+  sessionRow(s, here, t) {
+    const key = sessionKey(s);
+    return h_flex().id(`session-${key}`).flex_none().px(8).py(7).gap(10).items_center().rounded(8).cursor_pointer()
+      .hover(st => st.bg(t.hover)).on_click((_e, cx) => this.show(s, cx))
+      .when(canDelete(s), el => el.on_mouse_down("right", (_e, cx) => this.openSessionMenu(s, cx)))
+      .on_hover((hovered, cx) => {
+        if (hovered) this.hot = key; else if (this.hot === key) this.hot = null;
+        cx.notify();
+      })
+      .child(this.icon(s.agent, 16, t))
+      .child(v_flex().flex_1().min_w(0).gap(2)
+        .child(div().text_size(12.5).truncate().child(s.title || "(untitled)"))
+        .child(h_flex().gap(6).text_size(11).text_color(t.dim)
+          .child(div().flex_none().child(ago(s.updated)))
+          .child(div().flex_none().child(`· ${rowCount(s)}`))
+          .when(Boolean(s.profile), el => el.child(div().min_w(0).truncate().child(`· ${profileName(s)}`)))
+          .when(!here, el => el.child(div().min_w(0).truncate().child(`· ${short(s.cwd, this.home)}`)))))
+      .when(Boolean(AGENTS[s.agent]?.resume), el => el.child(this.quickResume(s, this.hot === key, t)));
+  }
+
   renderList(t) {
     const list = this.visible();
     const here = this.scope === "here" && Boolean(this.cwd), counts = {};
@@ -298,23 +341,7 @@ export default class History extends View {
           .child(this.chip("history-dismiss-trashed", "×", false, t, (_e, cx) => { this.trashed = null; cx.notify(); }))))
         .when(Boolean(this.error), (el) => el.child(div().p(8).text_color(t.ansi1).child(this.error)))
         .when(!this.error && !list.length, (el) => el.child(div().p(8).text_color(t.dim).child(empty)))
-        .children(list.slice(0, LIMIT).map((s) =>
-          h_flex().id(`session-${sessionKey(s)}`).flex_none().px(8).py(7).gap(10).items_center().rounded(8).cursor_pointer()
-            .hover((st) => st.bg(t.hover)).on_click((_e, cx) => this.show(s, cx))
-            .on_hover((hovered, cx) => {
-              const key = sessionKey(s);
-              if (hovered) this.hot = key; else if (this.hot === key) this.hot = null;
-              cx.notify();
-            })
-            .child(this.icon(s.agent, 16, t))
-            .child(v_flex().flex_1().min_w(0).gap(2)
-              .child(div().text_size(12.5).truncate().child(s.title || "(untitled)"))
-              .child(h_flex().gap(6).text_size(11).text_color(t.dim)
-                .child(div().flex_none().child(ago(s.updated)))
-                .child(div().flex_none().child(`· ${rowCount(s)}`))
-                .when(Boolean(s.profile), el => el.child(div().min_w(0).truncate().child(`· ${profileName(s)}`)))
-                .when(!here, (el) => el.child(div().min_w(0).truncate().child(`· ${short(s.cwd, this.home)}`)))))
-            .when(Boolean(AGENTS[s.agent]?.resume), (el) => el.child(this.quickResume(s, this.hot === sessionKey(s), t))))))
+        .children(list.slice(0, LIMIT).map(s => this.sessionRow(s, here, t))))
       .when(list.length > LIMIT, (el) => el.child(div().px(12).py(4).text_size(11).text_color(t.dim).child(`Showing the ${LIMIT} most recent of ${list.length}; search to narrow`)));
   }
 
@@ -429,8 +456,14 @@ export default class History extends View {
   }
 
   render(cx) {
-    this.syncRoot(cx);
     const t = theme();
+    if (this.menuToken) return this.renderSessionMenu(t);
+    this.syncRoot(cx);
+    if (this.menuSession && shared(DELETE_REQUEST) === this.menuSession.token) {
+      const { session } = this.menuSession;
+      this.menuSession = null;
+      cx.timer.after(0, cx => this.requestDelete(session, cx));
+    }
     return v_flex().id("history").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border)
       .text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
